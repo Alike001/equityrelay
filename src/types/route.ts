@@ -38,6 +38,8 @@ export type QuoteSnapshot = {
   to: Address;
   inputRaw: string;
   outputRaw: string;
+  inputDecimals?: number | null;
+  outputDecimals?: number | null;
   vendor: string | null;
   quoteId: string | null;
   tradeFeeUsd: string | null;

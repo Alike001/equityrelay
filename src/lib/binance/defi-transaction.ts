@@ -48,9 +48,11 @@ export async function buildVenusDeposit(owner: Address, destination: Destination
       if (!sameAddress(item.to, target.address)) throw new Error("INVALID_DEPOSIT_APPROVAL_TARGET");
       const decoded = decodeApprovalCalldata(item.data, amountRaw, true);
       const action = validateEvmAction({ kind: "APPROVAL", chainId: 56, from: item.from, to: item.to, data: item.data, value: item.value, valueFormat: "hex", gasLimit: item.gasLimit, gasPrice: item.gasPrice, maxPriorityFeePerGas: item.maxPriorityFeePerGas, maxFeePerGas: item.maxFeePerGas, tokenIn: target.address, tokenOut: null, amountInRaw: decoded.amountRaw, expectedFrom: owner, expectedTo: target.address });
-      return { ...action, approvalSpender: decoded.spender, approvalAmountRaw: decoded.amountRaw, approvalExceedsInput: decoded.exceedsInput };
+      return { ...action, approvalSpender: decoded.spender, approvalAmountRaw: decoded.amountRaw, approvalExceedsInput: decoded.exceedsInput,
+        amountInHuman: decimalText(rawToDecimal(decoded.amountRaw, target.decimals)), tokenInLabel: "NVDAB" };
     }
-    return validateEvmAction({ kind: "DEPOSIT", chainId: 56, from: item.from, to: item.to, data: item.data, value: item.value, valueFormat: "hex", gasLimit: item.gasLimit, gasPrice: item.gasPrice, maxPriorityFeePerGas: item.maxPriorityFeePerGas, maxFeePerGas: item.maxFeePerGas, tokenIn: target.address, tokenOut: null, amountInRaw: amountRaw, expectedFrom: owner });
+    return { ...validateEvmAction({ kind: "DEPOSIT", chainId: 56, from: item.from, to: item.to, data: item.data, value: item.value, valueFormat: "hex", gasLimit: item.gasLimit, gasPrice: item.gasPrice, maxPriorityFeePerGas: item.maxPriorityFeePerGas, maxFeePerGas: item.maxFeePerGas, tokenIn: target.address, tokenOut: null, amountInRaw: amountRaw, expectedFrom: owner }),
+      amountInHuman: amountHuman, tokenInLabel: "NVDAB", tokenOutLabel: "Venus" };
   });
   const preview = build.preview;
   const failReason = walletSimulationReason ?? preview?.errorMessage?.trim() ?? null;

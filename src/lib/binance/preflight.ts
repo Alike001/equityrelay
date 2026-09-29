@@ -48,9 +48,9 @@ function evaluatePreflightSafety(preview: RouteDecision, leg1: PreflightStage, l
   }
   if (unsafeBuild) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
   const stages = [leg1, leg2, venus];
-  if (stages.some(x => x.simulationStatus === "BLOCKED_BY_WALLET_STATE")) return { overallPreflightState: "WALLET_STATE_BLOCKED", safetyWarnings: warnings };
   if (stages.some(x => x.buildStatus === "UNAVAILABLE" || x.simulationStatus === "UNAVAILABLE")) return { overallPreflightState: "UNAVAILABLE", safetyWarnings: warnings };
   if (stages.some(x => x.simulationStatus === "FAILED")) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
+  if (stages.some(x => x.simulationStatus === "BLOCKED_BY_WALLET_STATE")) return { overallPreflightState: "WALLET_STATE_BLOCKED", safetyWarnings: warnings };
   return { overallPreflightState: "READY_TO_REVIEW", safetyWarnings: warnings };
 }
 

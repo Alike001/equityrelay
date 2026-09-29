@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { signedRequest } from "./client";
 import { sameAddress } from "@/domain/routing/identity";
+import { validDecimals } from "@/domain/exposure/decimal";
 import type { Address, QuoteSnapshot } from "@/types/route";
 
 const Quote = z.object({
@@ -14,8 +15,8 @@ const Quote = z.object({
   expiresAt: z.union([z.string(), z.number()]).optional().nullable(),
   expireTime: z.union([z.string(), z.number()]).optional().nullable(),
   expiryTime: z.union([z.string(), z.number()]).optional().nullable(),
-  fromToken: z.object({ tokenContractAddress: z.string().optional(), tokenAddress: z.string().optional() }).optional(),
-  toToken: z.object({ tokenContractAddress: z.string().optional(), tokenAddress: z.string().optional() }).optional(),
+  fromToken: z.object({ tokenContractAddress: z.string().optional(), tokenAddress: z.string().optional(), decimal: z.string().optional() }).optional(),
+  toToken: z.object({ tokenContractAddress: z.string().optional(), tokenAddress: z.string().optional(), decimal: z.string().optional() }).optional(),
 });
 
 function expiry(value: string | number | null | undefined): string | null {
@@ -38,6 +39,8 @@ export async function requestQuote(leg: 1 | 2, from: Address, to: Address, input
   if (quote.fromTokenAmount !== inputRaw || (returnedFrom && !sameAddress(returnedFrom, from)) || (returnedTo && !sameAddress(returnedTo, to))) throw new Error("INVALID_EVIDENCE");
   return {
     leg, from, to, inputRaw, outputRaw: quote.toTokenAmount,
+    inputDecimals: quote.fromToken?.decimal == null ? null : validDecimals(quote.fromToken.decimal),
+    outputDecimals: quote.toToken?.decimal == null ? null : validDecimals(quote.toToken.decimal),
     vendor: quote.vendorName ?? null, quoteId: quote.quoteId ?? null,
     tradeFeeUsd: quote.tradeFee == null ? null : String(quote.tradeFee),
     priceImpactPercent: quote.priceImpactPercent == null ? null : String(quote.priceImpactPercent),

@@ -1,7 +1,9 @@
 import "server-only";
 import { z } from "zod";
+import Decimal from "decimal.js";
 import { signedRequest } from "./client";
 import { parseApprovalSignatureData, unavailableSimulation, validateEvmAction, validateQuoteForBuild } from "@/domain/preflight/validate";
+import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
 import { sameAddress } from "@/domain/routing/identity";
 import type { Address, QuoteSnapshot } from "@/types/route";
 import type { PreflightAction } from "@/types/preflight";
@@ -50,7 +52,11 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
   if (built.executionMode === "SWAP") {
     if (!built.tx) throw new Error("MISSING_SWAP_TRANSACTION");
     const tx = built.tx;
-    const approval = parseApprovalSignatureData(tx.signatureData, quote.from, owner, quote.inputRaw);
+    if (tx.slippagePercent !== undefined && (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(tx.slippagePercent) || new Decimal(tx.slippagePercent).gt(slippagePercent))) throw new Error("BUILD_SLIPPAGE_EXCEEDS_POLICY");
+    const approval = parseApprovalSignatureData(tx.signatureData, quote.from, owner, quote.inputRaw).map(x => ({ ...x,
+      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT",
+      amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(x.amountInRaw, quote.inputDecimals)),
+    }));
     const action = validateEvmAction({
       kind: "SWAP", chainId: 56, from: tx.from, to: tx.to, data: tx.data, value: tx.value,
       valueFormat: "decimal-or-hex", gasLimit: tx.gas, gasPrice: tx.gasPrice,
@@ -59,16 +65,27 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
       minAmountOutRaw: tx.minReceiveAmount, expectedFrom: owner,
     });
     if (BigInt(action.minAmountOutRaw!) > BigInt(quoteOutputRaw)) throw new Error("MIN_RECEIVE_EXCEEDS_QUOTE");
-    return { executionMode: "SWAP", actions: [...approval, action], evmTx: { from: action.from, to: action.to!, value: action.valueWei!, data: tx.data }, minReceiveRaw: action.minAmountOutRaw, quoteOutputRaw };
+    const labeledAction = { ...action,
+      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
+      amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(action.amountInRaw, quote.inputDecimals)),
+      minAmountOutHuman: quote.outputDecimals == null ? null : decimalText(rawToDecimal(action.minAmountOutRaw!, quote.outputDecimals)),
+      slippagePercent: tx.slippagePercent ?? null,
+    };
+    return { executionMode: "SWAP", actions: [...approval, labeledAction], evmTx: { from: action.from, to: action.to!, value: action.valueWei!, data: tx.data }, minReceiveRaw: action.minAmountOutRaw, quoteOutputRaw };
   }
   if (built.executionMode === "RFQ") {
     if (!built.rfq?.typedDataToSign || built.rfq.txType !== "EIP712") throw new Error("INVALID_RFQ_PAYLOAD");
-    const approval = parseApprovalSignatureData(built.rfq.signatureData, quote.from, owner, quote.inputRaw);
+    const approval = parseApprovalSignatureData(built.rfq.signatureData, quote.from, owner, quote.inputRaw).map(x => ({ ...x,
+      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT",
+      amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(x.amountInRaw, quote.inputDecimals)),
+    }));
     const rfq: PreflightAction = {
-      kind: "RFQ", chainId: 56, from: owner, to: null, valueWei: null,
+      kind: "RFQ", chainId: 56, from: owner, to: null, valueWei: null, rawCalldata: null,
       calldataSummary: `EIP-712 RFQ signing request${built.rfq.vendor ? ` · ${built.rfq.vendor}` : ""}`,
       gasLimit: null, gasPrice: null, maxPriorityFeePerGas: null, maxFeePerGas: null,
       tokenIn: quote.from, tokenOut: quote.to, amountInRaw: quote.inputRaw, minAmountOutRaw: null,
+      amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(quote.inputRaw, quote.inputDecimals)),
+      minAmountOutHuman: null, slippagePercent: null, tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
       approvalSpender: null, approvalAmountRaw: null,
       approvalExceedsInput: false,
       simulation: unavailableSimulation("RFQ is a typed-data signing path, not an EVM swap transaction."),

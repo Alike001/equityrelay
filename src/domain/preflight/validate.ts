@@ -46,11 +46,12 @@ export function validateEvmAction(input: {
   if (input.kind === "SWAP" && (typeof input.minAmountOutRaw !== "string" || !positiveInteger.test(input.minAmountOutRaw))) throw new Error("MISSING_MIN_RECEIVE");
   return {
     kind: input.kind, chainId: 56, from, to, valueWei,
-    calldataSummary: `${input.data.slice(0, 10)} · ${Math.floor((input.data.length - 2) / 2)} bytes`,
+    calldataSummary: `${input.data.slice(0, 10)} · ${Math.floor((input.data.length - 2) / 2)} bytes`, rawCalldata: input.data,
     gasLimit: parseGas(input.gasLimit), gasPrice: parseGas(input.gasPrice, true),
     maxPriorityFeePerGas: parseGas(input.maxPriorityFeePerGas, true), maxFeePerGas: parseGas(input.maxFeePerGas, true),
     tokenIn: input.tokenIn, tokenOut: input.tokenOut, amountInRaw: input.amountInRaw,
-    minAmountOutRaw: input.minAmountOutRaw ?? null, approvalSpender: null, approvalAmountRaw: null, approvalExceedsInput: false,
+    minAmountOutRaw: input.minAmountOutRaw ?? null, amountInHuman: null, minAmountOutHuman: null, slippagePercent: null, tokenInLabel: "Token", tokenOutLabel: null,
+    approvalSpender: null, approvalAmountRaw: null, approvalExceedsInput: false,
     simulation: unavailableSimulation("Simulation has not run."),
   };
 }

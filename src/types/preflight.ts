@@ -19,6 +19,7 @@ export type PreflightAction = {
   to: Address | null;
   valueWei: string | null;
   calldataSummary: string;
+  rawCalldata: string | null;
   gasLimit: string | null;
   gasPrice: string | null;
   maxPriorityFeePerGas: string | null;
@@ -27,6 +28,11 @@ export type PreflightAction = {
   tokenOut: Address | null;
   amountInRaw: string;
   minAmountOutRaw: string | null;
+  amountInHuman: string | null;
+  minAmountOutHuman: string | null;
+  slippagePercent: string | null;
+  tokenInLabel: string;
+  tokenOutLabel: string | null;
   approvalSpender: Address | null;
   approvalAmountRaw: string | null;
   approvalExceedsInput: boolean;
