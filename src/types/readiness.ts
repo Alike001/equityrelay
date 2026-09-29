@@ -1,0 +1,11 @@
+export type ProofAsset = "BNB" | "NVDAon" | "USDT" | "NVDAB";
+export type WalletAssetBalance = { asset: ProofAsset; balance: string; rawBalance: string | null; reported: boolean };
+export type WalletReadiness = { walletShort: string; assets: Record<ProofAsset, WalletAssetBalance>; observedAt: string };
+export type CandidateStatus = "AVAILABLE" | "UNAVAILABLE" | "BELOW_MINIMUM" | "POLICY_BLOCKED" | "WALLET_STATE_BLOCKED";
+export type CandidateResult = { amount: string; status: CandidateStatus; viable: boolean; retentionPercent: string | null; venusBuild: "READY" | "UNAVAILABLE" | null; reason: string | null; quotedUsdtOutput: string | null; quotedNvdabOutput: string | null };
+export type AcquisitionResult = { kind: "TEST_SETUP"; required: boolean; status: "AVAILABLE" | "UNAVAILABLE" | "BELOW_MINIMUM" | "NOT_REQUIRED"; usdtInput: string | null; quotedNvdaonOutput: string | null; probes: Array<{ usdtInput: string; status: "AVAILABLE" | "UNAVAILABLE" | "BELOW_MINIMUM"; reason: string | null }>; note: string };
+export type GasEstimate = { priceWei: string | null; priceSource: "EIP1559_MEDIUM_MAX_FEE" | "LEGACY_MEDIUM" | null; proofGasUnits: string | null; setupGasUnits: string | null; knownProofGasUnits: string; knownProofCostBNB: string | null; estimatedProofCostBNB: string | null; estimatedSetupCostBNB: string | null; recommendedProofGasReserveBNB: string | null; recommendedTotalGasReserveBNB: string | null; provisionalTechnicalReserveBNB: string | null; bufferMultiplier: "2"; complete: boolean; missing: string[] };
+export type FundingRequirement = { asset: ProofAsset; requiredBalance: string; currentBalance: string; gap: string; basis: string };
+export type MainnetReadiness = { kind: "readiness"; wallet: WalletReadiness; candidates: CandidateResult[]; smallestViable: CandidateResult | null; acquisition: AcquisitionResult; gas: GasEstimate; requirements: FundingRequirement[]; blockers: string[]; observedAt: string; state: "READ_ONLY_NOT_READY" };
+export type ReadinessUnavailable = { kind: "unavailable"; reason: string; observedAt: string };
+export type ReadinessResult = MainnetReadiness | ReadinessUnavailable;

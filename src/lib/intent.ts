@@ -8,3 +8,6 @@ export const BrowserIntentSchema = z.strictObject({
   destination: z.literal("venus"), maxExposureLossBps: z.number().int().min(0).max(10000),
   takerAddress: z.string().refine(isAddress, "Enter a valid BSC address."),
 });
+
+// Readiness accepts an address only. Token identities and probe sizes are server owned.
+export const ReadinessIntentSchema = z.strictObject({ address: z.string().refine(isAddress, "Enter a valid BSC address.") });
