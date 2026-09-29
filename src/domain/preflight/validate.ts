@@ -1,5 +1,6 @@
 import { z } from "zod";
 import Decimal from "decimal.js";
+import { decodeErc20Approval, reviewApproval } from "@/domain/authorization/approval";
 import { isAddress, sameAddress } from "@/domain/routing/identity";
 import type { Address, QuoteSnapshot, RouteDecision } from "@/types/route";
 import type { PreflightAction, SimulationResult } from "@/types/preflight";
@@ -51,12 +52,12 @@ export function validateEvmAction(input: {
     maxPriorityFeePerGas: parseGas(input.maxPriorityFeePerGas, true), maxFeePerGas: parseGas(input.maxFeePerGas, true),
     tokenIn: input.tokenIn, tokenOut: input.tokenOut, amountInRaw: input.amountInRaw,
     minAmountOutRaw: input.minAmountOutRaw ?? null, amountInHuman: null, minAmountOutHuman: null, slippagePercent: null, tokenInLabel: "Token", tokenOutLabel: null,
-    approvalSpender: null, approvalAmountRaw: null, approvalExceedsInput: false,
+    approvalSpender: null, approvalAmountRaw: null, approvalExceedsInput: false, authorization: null,
     simulation: unavailableSimulation("Simulation has not run."),
   };
 }
 
-export function parseApprovalSignatureData(signatureData: unknown, token: Address, owner: Address, requestedRaw: string): PreflightAction[] {
+export function parseApprovalSignatureData(signatureData: unknown, token: Address, owner: Address, requestedRaw: string, decimals: number | null = null): PreflightAction[] {
   if (signatureData === null || signatureData === undefined) return [];
   if (!Array.isArray(signatureData)) throw new Error("UNSUPPORTED_APPROVAL_FORMAT");
   return signatureData.map(item => {
@@ -69,17 +70,17 @@ export function parseApprovalSignatureData(signatureData: unknown, token: Addres
     if (!sameAddress(decoded.spender, spender)) throw new Error("APPROVAL_SPENDER_MISMATCH");
     const amount = decoded.amountRaw;
     const action = validateEvmAction({ kind: "APPROVAL", chainId: 56, from: owner, to: token, data: calldata, value: "0", valueFormat: "decimal-or-hex", tokenIn: token, tokenOut: null, amountInRaw: amount, expectedFrom: owner, expectedTo: token });
-    return { ...action, approvalSpender: spender, approvalAmountRaw: amount };
+    return { ...action, approvalSpender: spender, approvalAmountRaw: amount,
+      authorization: reviewApproval({ token, spender, requestedAmountRaw: amount, allowedAmountRaw: requestedRaw, decimals, source: "BINANCE" }) };
   });
 }
 
 export function decodeApprovalCalldata(calldata: string, requestedRaw: string, allowExcess = false): { spender: Address; amountRaw: string; exceedsInput: boolean } {
-  if (!/^0x095ea7b3[a-fA-F0-9]{128}$/.test(calldata)) throw new Error("UNSUPPORTED_APPROVAL_FORMAT");
-  const spender = checkedAddress(`0x${calldata.slice(34, 74)}`);
-  const amountRaw = BigInt(`0x${calldata.slice(74, 138)}`).toString();
-  if (amountRaw === "0" || !positiveInteger.test(requestedRaw)) throw new Error("INVALID_APPROVAL_AMOUNT");
+  const { spender, amountRaw } = decodeErc20Approval(calldata);
+  if (!positiveInteger.test(requestedRaw)) throw new Error("INVALID_APPROVAL_AMOUNT");
   const exceedsInput = BigInt(amountRaw) > BigInt(requestedRaw);
-  if (exceedsInput && !allowExcess) throw new Error("APPROVAL_AMOUNT_EXCEEDS_INPUT");
+  if (exceedsInput && !allowExcess) throw new Error("BLOCK_AUTHORIZATION_SCOPE");
+  if (BigInt(amountRaw) < BigInt(requestedRaw) && !allowExcess) throw new Error("APPROVAL_BELOW_REQUIRED");
   return { spender, amountRaw, exceedsInput };
 }
 

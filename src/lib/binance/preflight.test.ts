@@ -40,7 +40,7 @@ function preview(): RouteDecision {
 }
 
 function stage(label: string): PreflightStage {
-  return { label, indicative: true, buildStatus: "READY", actions: [], simulationStatus: "PASSED", reason: null, previewDetails: null };
+  return { label, indicative: true, buildStatus: "READY", actions: [], simulationStatus: "PASSED", simulationPrerequisite: "INDICATIVE_AFTER_LEG1", authorizationStatus: "NOT_REQUIRED", rejectedAuthorization: null, reason: null, previewDetails: null };
 }
 
 beforeEach(() => {
@@ -63,6 +63,8 @@ describe("route preflight orchestration", () => {
     if (result.kind !== "preflight") return;
     expect(result.routePolicy).toBe("PASS");
     expect(result.overallPreflightState).toBe("READY_TO_REVIEW");
+    expect(result.authorizationSafety).toBe("REQUIRES_ONCHAIN_ALLOWANCE");
+    expect(result.executionReadiness).toBe("NOT_READY");
     expect(result.leg2Indicative.indicative).toBe(true);
     expect(result.venusDepositIndicative.indicative).toBe(true);
     expect(vi.mocked(buildSwapTransaction).mock.calls.map(call => call[0].quoteId)).toEqual(["leg1", "leg2"]);

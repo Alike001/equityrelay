@@ -53,10 +53,11 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
     if (!built.tx) throw new Error("MISSING_SWAP_TRANSACTION");
     const tx = built.tx;
     if (tx.slippagePercent !== undefined && (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(tx.slippagePercent) || new Decimal(tx.slippagePercent).gt(slippagePercent))) throw new Error("BUILD_SLIPPAGE_EXCEEDS_POLICY");
-    const approval = parseApprovalSignatureData(tx.signatureData, quote.from, owner, quote.inputRaw).map(x => ({ ...x,
+    const approval = parseApprovalSignatureData(tx.signatureData, quote.from, owner, quote.inputRaw, quote.inputDecimals ?? null).map(x => ({ ...x,
       tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT",
       amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(x.amountInRaw, quote.inputDecimals)),
     }));
+    if (approval.length > 1 || approval.some(x => !x.approvalSpender || !sameAddress(x.approvalSpender, tx.to))) throw new Error("APPROVAL_SPENDER_MISMATCH");
     const action = validateEvmAction({
       kind: "SWAP", chainId: 56, from: tx.from, to: tx.to, data: tx.data, value: tx.value,
       valueFormat: "decimal-or-hex", gasLimit: tx.gas, gasPrice: tx.gasPrice,
@@ -75,10 +76,7 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
   }
   if (built.executionMode === "RFQ") {
     if (!built.rfq?.typedDataToSign || built.rfq.txType !== "EIP712") throw new Error("INVALID_RFQ_PAYLOAD");
-    const approval = parseApprovalSignatureData(built.rfq.signatureData, quote.from, owner, quote.inputRaw).map(x => ({ ...x,
-      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT",
-      amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(x.amountInRaw, quote.inputDecimals)),
-    }));
+    if (built.rfq.signatureData?.length) throw new Error("RFQ_APPROVAL_SPENDER_UNVERIFIED");
     const rfq: PreflightAction = {
       kind: "RFQ", chainId: 56, from: owner, to: null, valueWei: null, rawCalldata: null,
       calldataSummary: `EIP-712 RFQ signing request${built.rfq.vendor ? ` · ${built.rfq.vendor}` : ""}`,
@@ -87,10 +85,10 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
       amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(quote.inputRaw, quote.inputDecimals)),
       minAmountOutHuman: null, slippagePercent: null, tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
       approvalSpender: null, approvalAmountRaw: null,
-      approvalExceedsInput: false,
+      approvalExceedsInput: false, authorization: null,
       simulation: unavailableSimulation("RFQ is a typed-data signing path, not an EVM swap transaction."),
     };
-    return { executionMode: "RFQ", actions: [...approval, rfq], evmTx: null, minReceiveRaw: null, quoteOutputRaw };
+    return { executionMode: "RFQ", actions: [rfq], evmTx: null, minReceiveRaw: null, quoteOutputRaw };
   }
   throw new Error("UNSUPPORTED_EXECUTION_MODE");
 }

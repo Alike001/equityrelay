@@ -12,7 +12,7 @@ import { buildVenusDeposit } from "./defi-transaction";
 
 function stageUnavailable(label: string, indicative: boolean, error: unknown): PreflightStage {
   const reason = error instanceof BinanceApiError ? `${error.businessCode}: ${error.message}` : error instanceof Error ? error.message : "Build response could not be validated.";
-  return { label, indicative, buildStatus: "UNAVAILABLE", actions: [], simulationStatus: isWalletStateFailure(reason) ? "BLOCKED_BY_WALLET_STATE" : "UNAVAILABLE", reason, previewDetails: null };
+  return { label, indicative, buildStatus: "UNAVAILABLE", actions: [], simulationStatus: isWalletStateFailure(reason) ? "BLOCKED_BY_WALLET_STATE" : "UNAVAILABLE", simulationPrerequisite: indicative ? "INDICATIVE_AFTER_LEG1" : "SIMULATABLE_NOW", authorizationStatus: /(?:APPROVAL|AUTHORIZATION)/.test(reason) ? "INVALID_APPROVAL" : "UNAVAILABLE", rejectedAuthorization: null, reason, previewDetails: null };
 }
 
 async function swapStage(quote: QuoteSnapshot, owner: BrowserIntent["takerAddress"], label: string, indicative: boolean, slippagePercent: string): Promise<{ stage: PreflightStage; plan: SwapBuildPlan | null; error: unknown | null }> {
@@ -20,7 +20,9 @@ async function swapStage(quote: QuoteSnapshot, owner: BrowserIntent["takerAddres
     const plan = await buildSwapTransaction(quote, owner, slippagePercent);
     const simulation = plan.evmTx ? await simulateEvmTransaction(plan.evmTx) : plan.actions.at(-1)!.simulation;
     const actions = plan.actions.map(action => action.kind === "SWAP" ? { ...action, simulation } : action);
-    return { stage: { label, indicative, buildStatus: "READY", actions, simulationStatus: simulation.status, reason: simulation.failReason, previewDetails: null }, plan, error: null };
+    const approval = actions.find(action => action.kind === "APPROVAL");
+    const simulationPrerequisite = indicative ? "INDICATIVE_AFTER_LEG1" : simulation.failReason && /allowance/i.test(simulation.failReason) && approval ? "REQUIRES_PRIOR_APPROVAL_STATE" : simulation.failReason && /balance/i.test(simulation.failReason) ? "REQUIRES_CURRENT_BALANCE" : "SIMULATABLE_NOW";
+    return { stage: { label, indicative, buildStatus: "READY", actions, simulationStatus: simulation.status, simulationPrerequisite, authorizationStatus: approval ? "BOUNDED_READY" : "REQUIRES_ONCHAIN_ALLOWANCE", rejectedAuthorization: null, reason: simulation.failReason, previewDetails: null }, plan, error: null };
   } catch (error) { return { stage: stageUnavailable(label, indicative, error), plan: null, error }; }
 }
 
@@ -42,10 +44,7 @@ function evaluatePreflightSafety(preview: RouteDecision, leg1: PreflightStage, l
       unsafeBuild = true;
     }
   } else warnings.push("An EVM minimum receive was unavailable for one or both swap legs. The final exposure floor cannot be confirmed here.");
-  if (venus.actions.some(x => x.kind === "APPROVAL" && x.approvalExceedsInput)) {
-    warnings.push("The Venus builder requested an approval larger than the indicative deposit amount. No approval was submitted.");
-    unsafeBuild = true;
-  }
+  if (venus.rejectedAuthorization) warnings.push("Binance requested a broad Venus approval. EquityRelay rejected it and prepared an unsigned exact-amount replacement. Nothing was submitted.");
   if (unsafeBuild) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
   const stages = [leg1, leg2, venus];
   if (stages.some(x => x.buildStatus === "UNAVAILABLE" || x.simulationStatus === "UNAVAILABLE")) return { overallPreflightState: "UNAVAILABLE", safetyWarnings: warnings };
@@ -76,7 +75,11 @@ export async function buildRoutePreflight(intent: BrowserIntent): Promise<Prefli
       kind: "preflight", routePolicy: "PASS",
       routePreview: { amount: preview.amount, maxExposureLossBps: preview.maxExposureLossBps, sourceShares: preview.sourceShares, targetShares: preview.targetShares, retentionPercent: preview.retentionPercent, exposureLossPercent: preview.exposureLossPercent, observedAt: preview.observedAt },
       leg1: leg1.stage, leg2Indicative: leg2.stage, venusDepositIndicative: venus,
-      ...safety, observedAt: new Date().toISOString(),
+      ...safety,
+      authorizationSafety: [leg1.stage, leg2.stage, venus].some(stage => stage.authorizationStatus === "INVALID_APPROVAL") ? "INVALID_APPROVAL" :
+        [leg1.stage, leg2.stage, venus].some(stage => stage.authorizationStatus === "UNAVAILABLE") ? "UNAVAILABLE" :
+        [leg1.stage, leg2.stage, venus].some(stage => stage.authorizationStatus === "REQUIRES_ONCHAIN_ALLOWANCE") ? "REQUIRES_ONCHAIN_ALLOWANCE" : "BOUNDED_READY",
+      executionReadiness: "NOT_READY", observedAt: new Date().toISOString(),
     };
   }
   return { kind: "refusal", routePolicy: "UNAVAILABLE", overallPreflightState: "UNAVAILABLE", reason: "Quotes expired during preflight. Build a fresh route." };

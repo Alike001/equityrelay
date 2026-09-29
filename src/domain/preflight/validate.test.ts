@@ -33,7 +33,7 @@ describe("unsigned transaction validation", () => {
     expect(parseApprovalSignatureData([JSON.stringify({ approveContract: router, approveTxCalldata: data })], NVDAON_ADDRESS, owner, "100")[0]).toMatchObject({ kind: "APPROVAL", to: NVDAON_ADDRESS, approvalSpender: router, approvalAmountRaw: "100", approvalExceedsInput: false });
     expect(() => parseApprovalSignatureData([router], NVDAON_ADDRESS, owner, "100")).toThrow("UNSUPPORTED_APPROVAL_FORMAT");
     expect(() => parseApprovalSignatureData([JSON.stringify({ approveContract: owner, approveTxCalldata: data })], NVDAON_ADDRESS, owner, "100")).toThrow("APPROVAL_SPENDER_MISMATCH");
-    expect(() => parseApprovalSignatureData([JSON.stringify({ approveContract: router, approveTxCalldata: approveData(router, 101n) })], NVDAON_ADDRESS, owner, "100")).toThrow("APPROVAL_AMOUNT_EXCEEDS_INPUT");
+    expect(() => parseApprovalSignatureData([JSON.stringify({ approveContract: router, approveTxCalldata: approveData(router, 101n) })], NVDAON_ADDRESS, owner, "100")).toThrow("BLOCK_AUTHORIZATION_SCOPE");
     expect(decodeApprovalCalldata(approveData(router, 101n), "100", true).exceedsInput).toBe(true);
   });
   it("recognizes only evidenced wallet-state failures", () => {

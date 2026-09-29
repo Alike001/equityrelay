@@ -12,7 +12,7 @@ import type { QuoteSnapshot } from "@/types/route";
 
 const owner = "0x1111111111111111111111111111111111111111" as const;
 const router = "0x2222222222222222222222222222222222222222" as const;
-const spender = "0x3333333333333333333333333333333333333333" as const;
+const spender = router;
 const approveData = (amount: bigint) => `0x095ea7b3${spender.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
 const quote = (): QuoteSnapshot => ({ leg: 1, from: NVDAON_ADDRESS, to: USDT_ADDRESS, inputRaw: "100", outputRaw: "99", quoteId: "fresh-id", vendor: "vendor", tradeFeeUsd: null, priceImpactPercent: null, observedAt: new Date().toISOString(), expiresAt: null });
 const destination = { protocol: "Venus" as const, chainId: 56 as const, investmentId: "live-id", assetAddress: NVDAB_ADDRESS, investable: true, observedAt: new Date().toISOString() };
@@ -65,6 +65,29 @@ describe("read-only transaction builders", () => {
     queue(envelope({ executionMode: "SWAP", routerResult: route, tx: { from: owner, to: router, data: "0x12345678", value: "0", minReceiveAmount: "98", slippagePercent: "0.3" } }));
     await expect(buildSwapTransaction(quote(), owner, "0.2")).rejects.toThrow("BUILD_SLIPPAGE_EXCEEDS_POLICY");
   });
+  it("fails closed when Binance ignores the exact swap approveAmount override", async () => {
+    const calls = queue(envelope({ executionMode: "SWAP", routerResult: { binanceChainId: "56", fromTokenAmount: "100", toTokenAmount: "99", fromToken: { tokenContractAddress: NVDAON_ADDRESS }, toToken: { tokenContractAddress: USDT_ADDRESS } }, tx: { from: owner, to: router, data: "0x12345678", value: "0", minReceiveAmount: "98", signatureData: [JSON.stringify({ approveContract: router, approveTxCalldata: approveData(101n) })] } }));
+    await expect(buildSwapTransaction(quote(), owner, "0.2")).rejects.toThrow("BLOCK_AUTHORIZATION_SCOPE");
+    expect(calls[0].url).toContain("approveAmount=100");
+  });
+  it("does not assume approval is unnecessary when a swap build omits approval metadata", async () => {
+    queue(envelope({ executionMode: "SWAP", routerResult: { binanceChainId: "56", fromTokenAmount: "100", toTokenAmount: "99", fromToken: { tokenContractAddress: NVDAON_ADDRESS }, toToken: { tokenContractAddress: USDT_ADDRESS } }, tx: { from: owner, to: router, data: "0x12345678", value: "0", minReceiveAmount: "98" } }));
+    const result = await buildSwapTransaction(quote(), owner, "0.2");
+    expect(result.actions.map(x => x.kind)).toEqual(["SWAP"]);
+  });
+  it("rejects Venus approval token, spender and native-value mismatches", async () => {
+    const deposit = { callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678" };
+    const build = (approve: object) => envelope({ dataList: [{ callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: approveData(100n), ...approve }, deposit] });
+    queue(build({ to: USDT_ADDRESS }));
+    await expect(buildVenusDeposit(owner, destination, target, "100")).rejects.toThrow("APPROVAL_TOKEN_MISMATCH");
+    vi.unstubAllGlobals();
+    const wrongSpender = `0x095ea7b3${owner.slice(2).padStart(64, "0")}${"64".padStart(64, "0")}`;
+    queue(build({ data: wrongSpender }));
+    await expect(buildVenusDeposit(owner, destination, target, "100")).rejects.toThrow("APPROVAL_SPENDER_MISMATCH");
+    vi.unstubAllGlobals();
+    queue(build({ value: "0x1" }));
+    await expect(buildVenusDeposit(owner, destination, target, "100")).rejects.toThrow("UNEXPECTED_NATIVE_VALUE");
+  });
   it("sends only evmTx to the simulation API and rejects business errors", async () => {
     const calls = queue(envelope({ status: "SUCCESS", balanceChanges: [], allowanceChanges: [] }));
     expect((await simulateEvmTransaction({ from: owner, to: router, value: "0", data: "0x12345678" })).status).toBe("PASSED");
@@ -95,12 +118,22 @@ describe("read-only transaction builders", () => {
     const result = await buildVenusDeposit(owner, destination, target, "100");
     expect(result.buildStatus).toBe("READY");
     expect(result.simulationStatus).toBe("BLOCKED_BY_WALLET_STATE");
-    expect(result.actions[0].approvalExceedsInput).toBe(true);
+    expect(result.rejectedAuthorization).toMatchObject({ status: "BROAD_APPROVAL_REJECTED", source: "BINANCE" });
+    expect(result.actions[0].authorization).toMatchObject({ status: "BOUNDED_READY", source: "EQUITYRELAY_BOUNDED_REPLACEMENT", requestedAmountRaw: "100", allowedAmountRaw: "100" });
+    expect(result.actions[0].approvalSpender).toBe(result.actions[1].to);
+    expect(result.actions[0].rawCalldata).toBe(approveData(100n));
     expect(JSON.parse(calls[1].init.body as string).simulate).toBe(false);
   });
   it("does not build a deposit for a non-investable destination", async () => {
     queue();
     await expect(buildVenusDeposit(owner, { ...destination, investable: false }, target, "100")).rejects.toThrow("VENUS_DESTINATION_UNAVAILABLE");
+  });
+  it("preserves a deposit-only response without inventing an approval", async () => {
+    queue(envelope({ dataList: [{ callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678" }], preview: { success: true } }));
+    const result = await buildVenusDeposit(owner, destination, target, "100");
+    expect(result.actions.map(x => x.kind)).toEqual(["DEPOSIT"]);
+    expect(result.authorizationStatus).toBe("NOT_REQUIRED");
+    expect(result.rejectedAuthorization).toBeNull();
   });
   it("rejects browser-supplied addresses, investment IDs and calldata", () => {
     const intent = { underlying: "NVDA", sourceRepresentation: "ondo", amount: "0.05", destination: "venus", maxExposureLossBps: 50, takerAddress: owner };

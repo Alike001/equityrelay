@@ -3,6 +3,21 @@ import type { Address, BrowserIntent, RouteDecision } from "./route";
 export type SimulationStatus = "PASSED" | "FAILED" | "BLOCKED_BY_WALLET_STATE" | "UNAVAILABLE";
 export type BuildStatus = "READY" | "UNAVAILABLE";
 export type TransactionAction = "APPROVAL" | "SWAP" | "RFQ" | "DEPOSIT";
+export type AuthorizationStatus = "NOT_REQUIRED" | "BOUNDED_READY" | "BROAD_APPROVAL_REJECTED" | "INVALID_APPROVAL" | "REQUIRES_ONCHAIN_ALLOWANCE" | "UNAVAILABLE";
+export type AuthorizationReasonCode = "APPROVAL_EXACT_AMOUNT" | "BLOCK_AUTHORIZATION_SCOPE" | "APPROVAL_BELOW_REQUIRED" | "INVALID_APPROVAL_CALLDATA" | "INVALID_APPROVAL_SELECTOR" | "ZERO_APPROVAL_SPENDER" | "APPROVAL_SPENDER_MISMATCH" | "APPROVAL_TOKEN_MISMATCH" | "UNEXPECTED_NATIVE_VALUE" | "BINANCE_APPROVAL_NOT_RETURNED" | "BINANCE_BROAD_APPROVAL_REPLACED";
+export type AuthorizationReview = {
+  token: Address;
+  spender: Address;
+  requestedAmountRaw: string;
+  allowedAmountRaw: string;
+  requestedAmountHuman: string | null;
+  allowedAmountHuman: string | null;
+  scope: "EXACT" | "BROAD" | "INSUFFICIENT";
+  source: "BINANCE" | "EQUITYRELAY_BOUNDED_REPLACEMENT";
+  status: AuthorizationStatus;
+  reasonCodes: AuthorizationReasonCode[];
+};
+export type SimulationPrerequisite = "SIMULATABLE_NOW" | "REQUIRES_PRIOR_APPROVAL_STATE" | "REQUIRES_CURRENT_BALANCE" | "INDICATIVE_AFTER_LEG1";
 
 export type SimulationResult = {
   status: SimulationStatus;
@@ -36,6 +51,7 @@ export type PreflightAction = {
   approvalSpender: Address | null;
   approvalAmountRaw: string | null;
   approvalExceedsInput: boolean;
+  authorization: AuthorizationReview | null;
   simulation: SimulationResult;
 };
 
@@ -45,6 +61,9 @@ export type PreflightStage = {
   buildStatus: BuildStatus;
   actions: PreflightAction[];
   simulationStatus: SimulationStatus;
+  simulationPrerequisite: SimulationPrerequisite;
+  authorizationStatus: AuthorizationStatus;
+  rejectedAuthorization: AuthorizationReview | null;
   reason: string | null;
   previewDetails: {
     balanceChanges: Array<{ tokenSymbol: string; amount: string; valueUsd: string | null }>;
@@ -62,6 +81,8 @@ export type RoutePreflight = {
   leg2Indicative: PreflightStage;
   venusDepositIndicative: PreflightStage;
   overallPreflightState: "READY_TO_REVIEW" | "WALLET_STATE_BLOCKED" | "UNAVAILABLE" | "BLOCKED";
+  authorizationSafety: AuthorizationStatus;
+  executionReadiness: "NOT_READY";
   safetyWarnings: string[];
   observedAt: string;
 };
