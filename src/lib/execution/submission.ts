@@ -20,9 +20,11 @@ export async function validateWalletSignedAction(serializedTransaction: `0x${str
   const signer = await recoverTransactionAddress({ serializedTransaction: serializedTransaction as TransactionSerialized });
   if (!(["legacy", "eip2930", "eip1559"] as const).some(type => type === parsed.type) || parsed.chainId !== 56 || !parsed.to || !sameAddress(parsed.to, action.to) ||
       parsed.data?.toLowerCase() !== action.rawCalldata.toLowerCase() || (parsed.value ?? 0n) !== 0n ||
-      parsed.gas !== BigInt(action.gasLimit) || !sameAddress(signer, session.owner)) throw new Error("SIGNED_TRANSACTION_PLAN_MISMATCH");
-  if ("gasPrice" in parsed && parsed.gasPrice && action.gasPrice && parsed.gasPrice > BigInt(action.gasPrice)) throw new Error("SIGNED_GAS_PRICE_EXCEEDS_PLAN");
-  if ("maxFeePerGas" in parsed && parsed.maxFeePerGas && action.maxFeePerGas && parsed.maxFeePerGas > BigInt(action.maxFeePerGas)) throw new Error("SIGNED_GAS_PRICE_EXCEEDS_PLAN");
+      !sameAddress(signer, session.owner)) throw new Error("SIGNED_TRANSACTION_PLAN_MISMATCH");
+  // Wallet-selected nonce and gas do not change action identity. Bound gas separately.
+  if (!parsed.gas || parsed.gas <= 0n || parsed.gas > BigInt(action.gasLimit) * 3n) throw new Error("SIGNED_GAS_LIMIT_EXCEEDS_POLICY");
+  if ("gasPrice" in parsed && parsed.gasPrice && action.gasPrice && parsed.gasPrice > BigInt(action.gasPrice) * 3n) throw new Error("SIGNED_GAS_PRICE_EXCEEDS_POLICY");
+  if ("maxFeePerGas" in parsed && parsed.maxFeePerGas && action.maxFeePerGas && parsed.maxFeePerGas > BigInt(action.maxFeePerGas) * 3n) throw new Error("SIGNED_GAS_PRICE_EXCEEDS_POLICY");
   return keccak256(serializedTransaction);
 }
 

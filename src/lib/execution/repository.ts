@@ -100,17 +100,21 @@ export async function reserveConfirmation(input: { routeId: string; wallet: stri
       AND stage=$4 AND action_hash=$5 AND route_version=$6 AND used_at IS NULL AND expires_at>now() RETURNING intent_id`,
       [hashSecret(input.token),input.routeId,input.wallet.toLowerCase(),input.stage,input.actionHash,input.routeVersion]);
     if (consumed.rowCount !== 1) throw new Error("CONFIRMATION_EXPIRED_OR_USED");
-    await client.query("UPDATE execution_steps SET status='AWAITING_WALLET_TX',updated_at=now() WHERE step_id=$1", [step.rows[0].step_id]);
+    await client.query("UPDATE execution_steps SET status='AWAITING_WALLET_TX',reserved_at=now(),updated_at=now() WHERE step_id=$1", [step.rows[0].step_id]);
     const boundary = input.stage.startsWith("LEG1") ? "LEAVE_ONDO" : input.stage.startsWith("LEG2") ? "CHANGE_REPRESENTATION" : "SUPPLY_TO_VENUS";
     const next = session.confirmations.includes(boundary) ? session : recordConfirmation(session, boundary);
     await client.query("UPDATE execution_routes SET session_snapshot=$2,version=version+1,updated_at=now() WHERE route_id=$1", [input.routeId,JSON.stringify(next)]);
   });
 }
 export async function abandonReservation(routeId: string, wallet: string, stage: ExecutionActionV1["stage"], reason: "USER_REJECTED" | "WALLET_PROMPT_EXPIRED" | "RESERVATION_EXPIRED"): Promise<void> {
+  // Internal-only Phase 3B primitive. Do not expose a browser rejection claim as proof
+  // of no broadcast; lost-hash recovery needs a separate chain/provider review.
   await transaction(async client => {
     const route = await client.query("SELECT version,session_snapshot FROM execution_routes WHERE route_id=$1 AND wallet=$2 FOR UPDATE", [routeId,wallet.toLowerCase()]);
     if (route.rowCount !== 1) throw new Error("ROUTE_NOT_FOUND");
-    const changed = await client.query("UPDATE execution_steps SET status=$3,failure_reason=$3,updated_at=now() WHERE route_id=$1 AND stage=$2 AND status='AWAITING_WALLET_TX' AND tx_hash IS NULL RETURNING step_id", [routeId,stage,reason]);
+    const changed = await client.query(`UPDATE execution_steps SET status=$3,failure_reason=$3,updated_at=now()
+      WHERE route_id=$1 AND stage=$2 AND status='AWAITING_WALLET_TX' AND tx_hash IS NULL
+      AND ($3='USER_REJECTED' OR reserved_at < now() - interval '2 minutes') RETURNING step_id`, [routeId,stage,reason]);
     if (changed.rowCount !== 1) throw new Error("RESERVATION_NOT_ABANDONABLE");
     const boundary = stage.startsWith("LEG1") ? "LEAVE_ONDO" : stage.startsWith("LEG2") ? "CHANGE_REPRESENTATION" : "SUPPLY_TO_VENUS";
     const confirmed = await client.query("SELECT 1 FROM execution_steps WHERE route_id=$1 AND stage LIKE $2 AND status='CONFIRMED' LIMIT 1", [routeId, stage.startsWith("LEG1") ? "LEG1_%" : stage.startsWith("LEG2") ? "LEG2_%" : "VENUS_%"]);

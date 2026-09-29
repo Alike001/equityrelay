@@ -44,4 +44,18 @@ describe("wallet-signed submission boundary", () => {
       expect(signedRequest).not.toHaveBeenCalled();
     } finally { if (before === undefined) delete process.env.EQUITYRELAY_MAINNET_EXECUTION; else process.env.EQUITYRELAY_MAINNET_EXECUTION = before; }
   });
+  it("accepts wallet-selected reasonable nonce/gas before the hard stop and rejects excessive gas", async () => {
+    const before = process.env.EQUITYRELAY_MAINNET_EXECUTION;
+    try {
+      process.env.EQUITYRELAY_MAINNET_EXECUTION = "true";
+      vi.mocked(recoverTransactionAddress).mockResolvedValue(owner);
+      vi.mocked(parseTransaction).mockReturnValue({ type: "eip1559", chainId: 56, to: target, data: "0x12345678", value: 0n,
+        nonce: 42, gas: 500000n } as ReturnType<typeof parseTransaction>);
+      await expect(submitWalletSignedAction(reference, "0x1234", store)).rejects.toThrow("PHASE3A_BROADCAST_DISABLED");
+      vi.mocked(parseTransaction).mockReturnValue({ type: "eip1559", chainId: 56, to: target, data: "0x12345678", value: 0n,
+        nonce: 43, gas: 1400000n } as ReturnType<typeof parseTransaction>);
+      await expect(submitWalletSignedAction(reference, "0x1234", store)).rejects.toThrow("SIGNED_GAS_LIMIT_EXCEEDS_POLICY");
+      expect(signedRequest).not.toHaveBeenCalled();
+    } finally { if (before === undefined) delete process.env.EQUITYRELAY_MAINNET_EXECUTION; else process.env.EQUITYRELAY_MAINNET_EXECUTION = before; }
+  });
 });

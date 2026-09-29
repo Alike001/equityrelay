@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
-const migration = join(process.cwd(), "db/migrations/001_execution.sql");
+const migrations = ["001_execution.sql", "002_reservation_time.sql"].map(file => join(process.cwd(), "db/migrations", file));
 const routeId = "11111111-1111-4111-8111-111111111111";
 const wallet = "0x1111111111111111111111111111111111111111";
 describe("PostgreSQL durable schema", () => {
@@ -12,7 +12,7 @@ describe("PostgreSQL durable schema", () => {
     const directory = await mkdtemp(join(tmpdir(), "equityrelay-db-"));
     try {
       let db = new PGlite(directory);
-      await db.exec(await readFile(migration, "utf8"));
+      for (const migration of migrations) await db.exec(await readFile(migration, "utf8"));
       await db.query(`INSERT INTO execution_routes(route_id,wallet,chain_id,original_intent,original_source_raw,max_exposure_loss_bps,lifecycle_state,session_snapshot)
         VALUES ($1,$2,56,'{}',500,50,'LEG1_REVIEW','{}')`, [routeId,wallet]);
       await db.query(`INSERT INTO auth_challenges(nonce_hash,wallet,chain_id,domain,uri,message,issued_at,expires_at)
@@ -36,6 +36,14 @@ describe("PostgreSQL durable schema", () => {
       const [firstTab, secondTab] = await Promise.all([0, 1].map(() => db.query(`UPDATE execution_routes SET version=version+1
         WHERE route_id=$1 AND version=0 RETURNING version`, [routeId])));
       expect(firstTab.rows.length + secondTab.rows.length).toBe(1);
+      await db.query("UPDATE execution_steps SET status='AWAITING_WALLET_TX',tx_hash=NULL,reserved_at=now() WHERE route_id=$1 AND stage='LEG1_APPROVAL'", [routeId]);
+      const early = await db.query(`UPDATE execution_steps SET status='RESERVATION_EXPIRED' WHERE route_id=$1
+        AND status='AWAITING_WALLET_TX' AND reserved_at<now()-interval '2 minutes' RETURNING step_id`, [routeId]);
+      expect(early.rows).toHaveLength(0);
+      await db.query("UPDATE execution_steps SET reserved_at=now()-interval '3 minutes' WHERE route_id=$1 AND stage='LEG1_APPROVAL'", [routeId]);
+      const expired = await db.query(`UPDATE execution_steps SET status='RESERVATION_EXPIRED' WHERE route_id=$1
+        AND status='AWAITING_WALLET_TX' AND reserved_at<now()-interval '2 minutes' RETURNING step_id`, [routeId]);
+      expect(expired.rows).toHaveLength(1);
       await db.close();
       db = new PGlite(directory);
       const restored = await db.query<{ version: string; used_at: Date }>(`SELECT version,used_at FROM execution_routes r JOIN confirmation_intents c ON c.route_id=r.route_id WHERE r.route_id=$1`, [routeId]);

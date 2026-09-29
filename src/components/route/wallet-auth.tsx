@@ -28,6 +28,7 @@ export function WalletAuth() {
     const invalidate = () => {
       setWallet(null);
       setStatus("Wallet or chain changed. Authenticate again before review.");
+      window.dispatchEvent(new Event("equityrelay-auth-changed"));
       void fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     };
     injected?.on?.("accountsChanged", invalidate);
@@ -53,6 +54,7 @@ export function WalletAuth() {
       const session = await response.json() as { wallet: string };
       setWallet(session.wallet);
       setStatus("Wallet authenticated. Mainnet execution remains disabled.");
+      window.dispatchEvent(new Event("equityrelay-auth-changed"));
     } catch (error) { setStatus(error instanceof Error ? error.message : "Wallet authentication unavailable."); }
     finally { setBusy(false); }
   }
