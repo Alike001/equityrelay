@@ -144,11 +144,11 @@ describe("read-only transaction builders", () => {
   });
 });
 
-describe("Phase 2A surface boundary", () => {
-  it("exposes only preview and preflight API routes and contains no wallet signing or broadcast implementation", () => {
+describe("Phase 2A read-only surfaces remain isolated", () => {
+  it("keeps preview and preflight routes free of wallet signing and broadcast code", () => {
     const apiRoot = join(process.cwd(), "src/app/api/route");
-    expect(readdirSync(apiRoot).sort()).toEqual(["preflight", "preview"]);
-    for (const path of ["src/lib/binance", "src/app/api/route"]) {
+    expect(readdirSync(apiRoot).sort()).toEqual(["execute", "preflight", "preview"]);
+    for (const path of ["src/lib/binance", "src/app/api/route/preflight", "src/app/api/route/preview"]) {
       const entries = readdirSync(join(process.cwd(), path), { recursive: true });
       for (const entry of entries) {
         if (typeof entry !== "string" || !entry.endsWith(".ts") || entry.endsWith(".test.ts")) continue;

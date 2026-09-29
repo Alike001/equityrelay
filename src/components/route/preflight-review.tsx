@@ -70,7 +70,8 @@ function FullReview({ data }: { data: RoutePreflight }) {
     <p className="approval-count">{approvals.length} unsigned approvals in the reviewed plan · Projected exposure retained: {shortNumber(data.routePreview.retentionPercent)}%</p>
     <Stage number="01" stage={data.leg1} /><Stage number="02" stage={data.leg2Indicative} /><Stage number="03" stage={data.venusDepositIndicative} />
     <div className="safety-summary"><div className="eyebrow">SAFETY SUMMARY</div><h3>What the evidence says</h3><p>EquityRelay never asks for unlimited token access when the route only requires a fixed amount.</p><ul>{data.safetyWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul><p>Future execution requires three separate confirmations: leave Ondo, convert the actual settled USDT, and supply the actual received NVDAB to Venus. This review is read-only.</p></div>
-    <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> NOTHING HAS BEEN SIGNED OR SUBMITTED</div>
+    <div className="execution-steps"><div className="eyebrow">FUTURE CONFIRMATIONS</div><div><strong>01 · Leave Ondo</strong><span>Review bounded source approval and minimum USDT receive</span><button type="button" disabled>Review · mainnet execution not armed</button></div><div><strong>02 · Change representation</strong><span>Locked until leg 1 confirms and actual USDT is measured</span></div><div><strong>03 · Supply to Venus</strong><span>Locked until leg 2 confirms and actual NVDAB is measured</span></div></div>
+    <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> NOTHING HAS BEEN SIGNED OR SUBMITTED <span>·</span> MAINNET EXECUTION NOT ARMED</div>
   </section>;
 }
 

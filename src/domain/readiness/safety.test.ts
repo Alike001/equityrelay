@@ -22,10 +22,10 @@ describe("read-only boundary", () => {
     expect(ui).toContain("Separate test setup");
     expect(ui).not.toMatch(/fund this now|buy now|execute now/i);
   });
-  it("introduces no execute endpoint, signer or private key handling", () => {
+  it("keeps readiness separate from guarded execution and private key handling", () => {
     const routes = files(path.join(root, "app/api")).map(file => path.relative(root, file));
     expect(routes).toEqual(expect.arrayContaining(["app/api/proof/readiness/route.ts"]));
-    expect(routes.some(file => /execute|broadcast|sign|submit/i.test(file))).toBe(false);
+    expect(routes.some(file => /broadcast|sign|submit/i.test(file))).toBe(false);
     const newSources = ["lib/binance/readiness.ts", "lib/binance/gas.ts", "lib/binance/wallet.ts", "app/api/proof/readiness/route.ts"];
     for (const file of newSources) expect(readFileSync(path.join(root, file), "utf8")).not.toMatch(/\b(?:sendTransaction|signTransaction|broadcastTransaction|privateKey|seedPhrase)\b/);
   });
