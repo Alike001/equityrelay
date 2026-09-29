@@ -9,6 +9,7 @@ dist/
 coverage/
 *.tsbuildinfo
 .playwright-mcp/
+next-env.d.ts
 
 *.log
 .DS_Store
