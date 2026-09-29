@@ -31,7 +31,7 @@ function Result({ result }: { result: PreviewResult }) {
   </section>;
   const pass = result.state === "PASS";
   return <section className={`result-panel ${pass ? "passed" : "blocked"}`} aria-live="polite">
-    <div className="result-top"><div><div className="eyebrow">ROUTE READY · READ-ONLY PREVIEW</div><h2>NVIDIA <span>→</span> Venus</h2></div><strong className={`status-pill ${pass ? "pass" : "block"}`}>{result.state}</strong></div>
+    <div className="result-top"><div><div className="eyebrow">ROUTE READY · READ-ONLY PREVIEW</div><h2>NVIDIA <span>→</span> Venus</h2></div><div className="verdict-stack"><strong className={`status-pill ${pass ? "pass" : "block"}`}>{result.state}</strong>{pass && <small>Inside your {displayDecimal(new Decimal(result.maxExposureLossBps).div(100).toString(), 2)}% limit</small>}</div></div>
     <div className="route-line" aria-label="Compiled route"><span><small>Current</small>Ondo</span><i aria-hidden="true">→</i><span><small>Settlement</small>USDT</span><i aria-hidden="true">→</i><span><small>Compatible</small>bStocks</span><i aria-hidden="true">→</i><span><small>Destination</small>Venus</span></div>
     <div className="exposure-grid">
       <div><small>BEFORE · NVIDIA-EQUIVALENT SHARES</small><strong>{displayDecimal(result.sourceShares, 8)}</strong></div>
@@ -39,7 +39,7 @@ function Result({ result }: { result: PreviewResult }) {
       <div className="retention"><small>PROJECTED EXPOSURE RETAINED</small><strong>{displayDecimal(result.retentionPercent, 4)}%</strong></div>
       <div><small>YOUR MINIMUM RETENTION</small><strong>{displayDecimal(new Decimal(100).minus(new Decimal(result.maxExposureLossBps).div(100)).toString(), 2)}%</strong></div>
     </div>
-    <p className="result-message">{pass ? "This indicative route is inside your exposure limit. No transaction has been prepared or submitted." : "This route does not meet your exposure limit or destination checks. Nothing has been prepared or submitted."}</p>
+    <p className="result-message">{pass ? "This indicative route is inside your exposure limit. Nothing has been signed or submitted." : "This route does not meet your exposure limit or destination checks. Nothing has been signed or submitted."}</p>
     <div className="result-meta"><span>{result.reasons.join(" · ")}</span><span>Observed {new Date(result.observedAt).toLocaleTimeString()}</span></div>
     <RouteEvidence decision={result} />
   </section>;
@@ -55,7 +55,7 @@ export function RoutePreviewForm() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setResult(null);
-    if (!addressPattern.test(address)) { setError("Enter a valid BSC wallet address for quote context."); return; }
+    if (!addressPattern.test(address)) { setError("Enter a valid BSC wallet address for a live quote."); return; }
     if (!percentPattern.test(maxLoss)) { setError("Enter a maximum exposure reduction with up to two decimal places."); return; }
     let bps: number;
     try { bps = new Decimal(maxLoss).mul(100).toNumber(); if (!Number.isInteger(bps) || bps < 0 || bps > 10000) throw new Error(); }
@@ -87,9 +87,9 @@ export function RoutePreviewForm() {
       <label className="field-label" htmlFor="max-loss">Maximum exposure reduction</label>
       <div className="input-shell percent"><input id="max-loss" type="text" inputMode="decimal" required value={maxLoss} onChange={e => setMaxLoss(e.target.value)} /><span>%</span></div>
       <small className="field-hint">The route is blocked if projected NVIDIA-equivalent exposure reduction exceeds this limit.</small>
-      <label className="field-label address-label" htmlFor="taker-address">BSC address for quote context</label>
+      <label className="field-label address-label" htmlFor="taker-address">Wallet address for live quote</label>
       <input className="address-input" id="taker-address" type="text" placeholder="0x…" required value={address} onChange={e => setAddress(e.target.value.trim())} autoComplete="off" spellCheck={false} />
-      <small className="field-hint">Binance may make stock quotes address-specific. This does not connect or sign with your wallet.</small>
+      <small className="field-hint">Used only for address-specific RWA pricing. No wallet connection or signing occurs.</small>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary-button build-button" type="submit" disabled={loading}>{loading ? "Discovering route…" : "Build route"}<span aria-hidden="true">↗</span></button>
       <p className="form-footnote">Read-only preview · No approvals, signatures, swaps or deposits</p>
