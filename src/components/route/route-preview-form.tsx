@@ -110,7 +110,7 @@ export function RoutePreviewForm() {
       <small className="field-hint">The route is blocked if projected NVIDIA-equivalent exposure reduction exceeds this limit.</small>
       <label className="field-label address-label" htmlFor="taker-address">Wallet address for live quote</label>
       <input className="address-input" id="taker-address" type="text" placeholder="0x…" required value={address} onChange={e => { setAddress(e.target.value.trim()); invalidate(); }} autoComplete="off" spellCheck={false} />
-      <small className="field-hint">Used only for address-specific RWA pricing. No wallet connection or signing occurs.</small>
+      <small className="field-hint">Used only for address-specific RWA pricing. Entering an address does not connect or sign. Any later execution review is bound to the separately authenticated wallet.</small>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary-button build-button" type="submit" disabled={loading}>{loading ? "Discovering route…" : "Build route"}<span aria-hidden="true">↗</span></button>
       <p className="form-footnote">Read-only preview · No approvals, signatures, swaps or deposits</p>
