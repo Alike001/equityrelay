@@ -19,10 +19,12 @@ async function swapStage(quote: QuoteSnapshot, owner: BrowserIntent["takerAddres
   try {
     const plan = await buildSwapTransaction(quote, owner, slippagePercent);
     const simulation = plan.evmTx ? await simulateEvmTransaction(plan.evmTx) : plan.actions.at(-1)!.simulation;
-    const actions = plan.actions.map(action => action.kind === "SWAP" ? { ...action, simulation } : action);
+    const actions = await Promise.all(plan.actions.map(async action => action.kind === "APPROVAL" && action.to && action.rawCalldata && action.valueWei !== null
+      ? { ...action, simulation: await simulateEvmTransaction({ from: action.from, to: action.to, value: action.valueWei, data: action.rawCalldata }) }
+      : action.kind === "SWAP" ? { ...action, simulation } : action));
     const approval = actions.find(action => action.kind === "APPROVAL");
     const simulationPrerequisite = indicative ? "INDICATIVE_AFTER_LEG1" : simulation.failReason && /allowance/i.test(simulation.failReason) && approval ? "REQUIRES_PRIOR_APPROVAL_STATE" : simulation.failReason && /balance/i.test(simulation.failReason) ? "REQUIRES_CURRENT_BALANCE" : "SIMULATABLE_NOW";
-    return { stage: { label, indicative, buildStatus: "READY", actions, simulationStatus: simulation.status, simulationPrerequisite, authorizationStatus: approval ? "BOUNDED_READY" : "REQUIRES_ONCHAIN_ALLOWANCE", rejectedAuthorization: null, reason: simulation.failReason, previewDetails: null }, plan, error: null };
+    return { stage: { label, indicative, buildStatus: "READY", actions: actions.map(action => action.kind === "SWAP" ? { ...action, simulationPrerequisite } : action), simulationStatus: simulation.status, simulationPrerequisite, authorizationStatus: approval ? "BOUNDED_READY" : "REQUIRES_ONCHAIN_ALLOWANCE", rejectedAuthorization: null, reason: simulation.failReason, previewDetails: null }, plan, error: null };
   } catch (error) { return { stage: stageUnavailable(label, indicative, error), plan: null, error }; }
 }
 
@@ -47,9 +49,11 @@ function evaluatePreflightSafety(preview: RouteDecision, leg1: PreflightStage, l
   if (venus.rejectedAuthorization) warnings.push("Binance requested a broad Venus approval. EquityRelay rejected it and prepared an unsigned exact-amount replacement. Nothing was submitted.");
   if (unsafeBuild) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
   const stages = [leg1, leg2, venus];
+  const approvalSimulations = stages.flatMap(stage => stage.actions.filter(action => action.kind === "APPROVAL").map(action => action.simulation.status));
   if (stages.some(x => x.buildStatus === "UNAVAILABLE" || x.simulationStatus === "UNAVAILABLE")) return { overallPreflightState: "UNAVAILABLE", safetyWarnings: warnings };
-  if (stages.some(x => x.simulationStatus === "FAILED")) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
-  if (stages.some(x => x.simulationStatus === "BLOCKED_BY_WALLET_STATE")) return { overallPreflightState: "WALLET_STATE_BLOCKED", safetyWarnings: warnings };
+  if (stages.some(x => x.simulationStatus === "FAILED") || approvalSimulations.includes("FAILED")) return { overallPreflightState: "BLOCKED", safetyWarnings: warnings };
+  if (approvalSimulations.includes("UNAVAILABLE")) return { overallPreflightState: "UNAVAILABLE", safetyWarnings: warnings };
+  if (stages.some(x => x.simulationStatus === "BLOCKED_BY_WALLET_STATE") || approvalSimulations.includes("BLOCKED_BY_WALLET_STATE")) return { overallPreflightState: "WALLET_STATE_BLOCKED", safetyWarnings: warnings };
   return { overallPreflightState: "READY_TO_REVIEW", safetyWarnings: warnings };
 }
 
@@ -69,6 +73,8 @@ export async function buildRoutePreflight(intent: BrowserIntent): Promise<Prefli
     let venus: PreflightStage;
     try {
       venus = await buildVenusDeposit(intent.takerAddress, preview.evidence.destination, preview.evidence.target, preview.evidence.leg2.outputRaw);
+      if (venus.buildStatus === "READY") venus = { ...venus, actions: await Promise.all(venus.actions.map(async action => action.kind === "APPROVAL" && action.to && action.rawCalldata && action.valueWei !== null
+        ? { ...action, simulation: await simulateEvmTransaction({ from: action.from, to: action.to, value: action.valueWei, data: action.rawCalldata }) } : action)) };
     } catch (error) { venus = stageUnavailable("Prepare Venus", true, error); }
     const safety = evaluatePreflightSafety(preview, leg1.stage, leg2.stage, venus, leg1.plan, leg2.plan);
     return {

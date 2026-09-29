@@ -53,7 +53,7 @@ export function validateEvmAction(input: {
     tokenIn: input.tokenIn, tokenOut: input.tokenOut, amountInRaw: input.amountInRaw,
     minAmountOutRaw: input.minAmountOutRaw ?? null, amountInHuman: null, minAmountOutHuman: null, slippagePercent: null, tokenInLabel: "Token", tokenOutLabel: null,
     approvalSpender: null, approvalAmountRaw: null, approvalExceedsInput: false, authorization: null,
-    simulation: unavailableSimulation("Simulation has not run."),
+    simulation: unavailableSimulation("Simulation has not run."), simulationPrerequisite: "SIMULATABLE_NOW",
   };
 }
 

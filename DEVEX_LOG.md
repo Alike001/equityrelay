@@ -53,3 +53,36 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Validate and display the exact requested spender/amount; block a ready-to-continue verdict. Nothing was signed or submitted.
 - **Suggested improvement:** Provide a deposit-builder option for an exact-amount approval and an explicit approval-scope field.
 - **Evidence:** Live local read-only preflight on 2026-09-29; decoded ERC-20 `approve(address,uint256)` calldata.
+
+### 2026-09-29 20:29 WAT — Trading `approveAmount` matched both live swap approvals
+
+- **API / surface:** Binance Trading `buildSwapTransaction` for BSC.
+- **Attempt:** Request `approveAmount` equal to each leg's exact input raw units for a live 0.05 NVDAon route, then ABI-decode the returned approval calldata.
+- **Expected:** Each returned approval amount would equal the requested route amount.
+- **Actual:** Leg 1 returned 0.05 NVDAon (50000000000000000 raw), and indicative leg 2 returned 11.421219988624968028 USDT (11421219988624968028 raw), each equal to its `approveAmount`. Additional read-only 0.10 and 0.25 NVDAon probes also returned exact requested approvals on both legs. All approved the Binance-returned swap target. These observations do not guarantee all routes.
+- **Error/code:** None.
+- **Workaround:** EquityRelay compares the ABI-decoded amount with the exact route input and fails closed with `BLOCK_AUTHORIZATION_SCOPE` if Binance ever returns more.
+- **Suggested improvement:** Return a structured approval token, spender, and amount alongside `signatureData` to make the scope easier to audit.
+- **Evidence:** Live read-only Phase 2B preflight on 2026-09-29; no transaction was submitted.
+
+### 2026-09-29 20:35 WAT — Trading simulation has no documented ordered approval-state input
+
+- **API / surface:** Binance Transaction `simulateTransactions` (`/api/v1/dex/pre-transaction/simulate`).
+- **Attempt:** Inspect the current official connector request type and method for an ordered approval → swap simulation, and compare with the observed live single-swap simulation.
+- **Expected:** A documented way to pass an approval and swap as an ordered stateful batch, if supported.
+- **Actual:** The documented EVM request contains one `evmTx` object with `from`, `to`, `value`, and `data`; no ordered transaction array or state override is exposed in the inspected connector. Separate live simulations of the unsigned NVDAon, USDT, and locally bounded NVDAB approvals each returned `PASSED`. The live leg-1 swap simulation still reported insufficient allowance, and leg 2 reported insufficient balance, because those approval simulations did not change wallet state. This does not prove an undocumented capability cannot exist.
+- **Error/code:** No API business error for the documentation check; live simulation reason was `execution reverted: ERC20: insufficient allowance`.
+- **Workaround:** Model `REQUIRES_PRIOR_APPROVAL_STATE` separately from transaction validity. Do not create allowance or claim a stateful pass in read-only mode.
+- **Suggested improvement:** Expose documented ordered transaction simulation or an explicit prior-state override for approval-dependent swaps.
+- **Evidence:** Official connector source commit `b1fe19c`, `SimulateTransactionsRequestEvmTx` and `TransactionApi.simulateTransactions`; live 2026-09-29 preflight.
+
+### 2026-09-29 20:27 WAT — DeFi deposit builder has no documented approval scope option
+
+- **API / surface:** Binance DeFi `buildDeFiDepositTransaction`.
+- **Attempt:** Inspect the current connector request parameters and token schema for an approval amount or approval policy; compare with the live Venus NVDAB build.
+- **Expected:** An optional exact-spend approval policy, if supported.
+- **Actual:** The inspected request accepts address, investmentId, token amount, and simulate, but documents no approval amount or policy. The live builder returned a uint256.max NVDAB approval for an indicative 0.050001119388168954 NVDAB deposit.
+- **Error/code:** None; the broad allowance was returned in valid approval calldata.
+- **Workaround:** Reject the Binance approval and locally construct an unsigned ERC-20 approval for exactly the indicative deposit amount, after verifying its spender equals the Binance deposit target. Preserve Binance deposit calldata without modification.
+- **Suggested improvement:** Let callers choose a bounded approval amount or policy, or return an exact-spend approval by default.
+- **Evidence:** Official connector source commit `b1fe19c`, `DefiTransactionApi.buildDeFiDepositTransaction` and request token type; live read-only Phase 2B preflight on 2026-09-29.

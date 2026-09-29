@@ -53,6 +53,7 @@ export type PreflightAction = {
   approvalExceedsInput: boolean;
   authorization: AuthorizationReview | null;
   simulation: SimulationResult;
+  simulationPrerequisite: SimulationPrerequisite;
 };
 
 export type PreflightStage = {

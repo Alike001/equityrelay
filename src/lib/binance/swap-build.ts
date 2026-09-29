@@ -86,7 +86,7 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
       minAmountOutHuman: null, slippagePercent: null, tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
       approvalSpender: null, approvalAmountRaw: null,
       approvalExceedsInput: false, authorization: null,
-      simulation: unavailableSimulation("RFQ is a typed-data signing path, not an EVM swap transaction."),
+      simulation: unavailableSimulation("RFQ is a typed-data signing path, not an EVM swap transaction."), simulationPrerequisite: "SIMULATABLE_NOW",
     };
     return { executionMode: "RFQ", actions: [rfq], evmTx: null, minReceiveRaw: null, quoteOutputRaw };
   }

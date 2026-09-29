@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserIntent, RouteDecision } from "@/types/route";
 import type { PreflightStage } from "@/types/preflight";
 import { validateEvmAction } from "@/domain/preflight/validate";
+import { encodeExactApproval, reviewApproval } from "@/domain/authorization/approval";
 import { NVDAON_ADDRESS, NVDAB_ADDRESS, USDT_ADDRESS } from "@/domain/routing/identity";
 
 vi.mock("server-only", () => ({}));
@@ -92,5 +93,31 @@ describe("route preflight orchestration", () => {
     const result = await buildRoutePreflight(intent);
     expect(result.kind).toBe("preflight");
     if (result.kind === "preflight") expect(result.overallPreflightState).toBe("UNAVAILABLE");
+  });
+
+  it("keeps a passing approval simulation separate from a swap blocked by current allowance", async () => {
+    vi.mocked(buildSwapTransaction).mockImplementation(async quote => {
+      const approval = validateEvmAction({ kind: "APPROVAL", chainId: 56, from: owner, to: quote.from, data: encodeExactApproval(target, quote.inputRaw), value: "0", valueFormat: "decimal-or-hex", tokenIn: quote.from, tokenOut: null, amountInRaw: quote.inputRaw, expectedFrom: owner });
+      const swap = validateEvmAction({ kind: "SWAP", chainId: 56, from: owner, to: target, data: "0x12345678", value: "0", valueFormat: "decimal-or-hex", tokenIn: quote.from, tokenOut: quote.to, amountInRaw: quote.inputRaw, minAmountOutRaw: quote.outputRaw, expectedFrom: owner });
+      return { executionMode: "SWAP", actions: [{ ...approval, authorization: reviewApproval({ token: quote.from, spender: target, requestedAmountRaw: quote.inputRaw, allowedAmountRaw: quote.inputRaw, decimals: 18, source: "BINANCE" }) }, swap],
+        evmTx: { from: owner, to: target, value: "0", data: "0x12345678" }, minReceiveRaw: quote.leg === 1 ? "199900000000000000000" : "998000000000000000", quoteOutputRaw: quote.outputRaw };
+    });
+    vi.mocked(simulateEvmTransaction).mockImplementation(async tx => tx.to === target
+      ? { ...simulation, status: "BLOCKED_BY_WALLET_STATE", failReason: "execution reverted: ERC20: insufficient allowance" }
+      : simulation);
+    const result = await buildRoutePreflight(intent);
+    expect(result.kind).toBe("preflight");
+    if (result.kind !== "preflight") return;
+    expect(result.leg1.actions[0].simulation.status).toBe("PASSED");
+    expect(result.leg1.actions[1].simulation.status).toBe("BLOCKED_BY_WALLET_STATE");
+    expect(result.leg1.simulationPrerequisite).toBe("REQUIRES_PRIOR_APPROVAL_STATE");
+    expect(result.overallPreflightState).toBe("WALLET_STATE_BLOCKED");
+    vi.mocked(simulateEvmTransaction).mockImplementation(async tx => tx.to === target
+      ? { ...simulation, status: "BLOCKED_BY_WALLET_STATE", failReason: "execution reverted: ERC20: insufficient allowance" }
+      : { ...simulation, status: "FAILED", failReason: "unknown approval revert" });
+    const failedApproval = await buildRoutePreflight(intent);
+    if (failedApproval.kind !== "preflight") throw new Error("Expected preflight");
+    expect(failedApproval.leg1.actions[0].simulation.status).toBe("FAILED");
+    expect(failedApproval.overallPreflightState).toBe("BLOCKED");
   });
 });

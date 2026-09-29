@@ -2,7 +2,7 @@
 
 **Own the stock. We handle the rail.**
 
-EquityRelay is a read-only destination router for NVIDIA tokenized stock on BNB Chain. Phase 1 compiles `NVDAon → USDT → NVDAB → Venus`, compares NVIDIA-equivalent shares with a user-defined exposure-loss limit, and shows `PASS`, `BLOCKED`, or `UNAVAILABLE` in the product UI. Phase 2A can refresh a passing route, build unsigned Binance swap and Venus actions, and request read-only simulations. It does not sign, approve, swap, broadcast, or deposit.
+EquityRelay is a read-only destination router for NVIDIA tokenized stock on BNB Chain. Phase 1 compiles `NVDAon → USDT → NVDAB → Venus`, compares NVIDIA-equivalent shares with a user-defined exposure-loss limit, and shows `PASS`, `BLOCKED`, or `UNAVAILABLE` in the product UI. Phase 2A refreshes a passing route, builds unsigned Binance swap and Venus actions, and requests read-only simulations. Phase 2B validates exact swap approvals, rejects the broad Venus approval, and locally creates an unsigned exact-amount replacement. It does not sign, approve, swap, broadcast, or deposit.
 
 ## Run locally
 
@@ -30,6 +30,7 @@ The signed Binance client and response adapters follow the successful 2026-09-29
 - `src/lib/binance/` signs requests and validates live RWA, Trading, and DeFi Data responses server-side.
 - `src/app/api/route/preview/` accepts only human-readable user intent and returns a safe read-only result.
 - `src/app/api/route/preflight/` accepts the same intent, reacquires live evidence, and returns validated unsigned actions and simulation results. Leg 2 and Venus remain indicative until leg 1 settles and the route is quoted again.
+- `src/domain/authorization/` ABI-decodes approval calldata and constructs exact unsigned ERC-20 approvals. `src/domain/execution/` contains the future execution state machine and its confirmation boundaries; no execution adapter or endpoint exists.
 - `src/components/` and `src/app/` present the landing page, destination-first route flow, and feasibility record.
 
 See [DEVEX_LOG.md](DEVEX_LOG.md) for observed API findings. The product scope and later execution safeguards are in [docs/context/BUILD_SPEC.md](docs/context/BUILD_SPEC.md).
