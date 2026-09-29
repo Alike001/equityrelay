@@ -65,7 +65,10 @@ describe("exposure and policy", () => {
   });
   it("models a future post-leg-1 stop without executing it", () => {
     const item = copy(); item.leg2.outputRaw = "900000000000000000";
-    expect(recheckLeg2AfterLeg1(intent, item)).toBe("PARTIAL_ROUTE_STOPPED");
-    expect(recheckLeg2AfterLeg1(intent, null)).toBe("PARTIAL_ROUTE_STOPPED");
+    const recheck = { originalSource: item.source, originalSourceRaw: item.sourceRaw, actualUsdtRaw: "1800000000000000000", refreshedTarget: item.target, refreshedLeg2: { ...item.leg2, inputRaw: "1800000000000000000" }, maxExposureLossBps: 50 };
+    expect(recheckLeg2AfterLeg1(recheck)).toBe("PARTIAL_ROUTE_STOPPED");
+    expect(recheckLeg2AfterLeg1({ ...recheck, refreshedLeg2: null })).toBe("PARTIAL_ROUTE_STOPPED");
+    expect(recheckLeg2AfterLeg1({ ...recheck, refreshedLeg2: { ...item.leg2, inputRaw: item.leg1.outputRaw } })).toBe("PARTIAL_ROUTE_STOPPED");
+    expect(recheckLeg2AfterLeg1({ ...recheck, refreshedLeg2: { ...recheck.refreshedLeg2!, outputRaw: "1000000000000000000" } })).toBe("PASS");
   });
 });

@@ -86,7 +86,7 @@ export function RoutePreviewForm() {
       <div className="step-label"><span>03</span>Your safety limit</div>
       <label className="field-label" htmlFor="max-loss">Maximum exposure reduction</label>
       <div className="input-shell percent"><input id="max-loss" type="text" inputMode="decimal" required value={maxLoss} onChange={e => setMaxLoss(e.target.value)} /><span>%</span></div>
-      <small className="field-hint">The route is blocked if projected NVIDIA-equivalent exposure falls below this limit.</small>
+      <small className="field-hint">The route is blocked if projected NVIDIA-equivalent exposure reduction exceeds this limit.</small>
       <label className="field-label address-label" htmlFor="taker-address">BSC address for quote context</label>
       <input className="address-input" id="taker-address" type="text" placeholder="0x…" required value={address} onChange={e => setAddress(e.target.value.trim())} autoComplete="off" spellCheck={false} />
       <small className="field-hint">Binance may make stock quotes address-specific. This does not connect or sign with your wallet.</small>

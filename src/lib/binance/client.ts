@@ -37,6 +37,7 @@ export async function signedRequest(method: "GET" | "POST", path: string, option
       },
       ...(body ? { body } : {}),
       cache: "no-store",
+      signal: AbortSignal.timeout(12000),
     });
   } catch {
     throw new BinanceApiError(path, 0, "NETWORK", "Binance API request could not be completed.");
@@ -46,7 +47,7 @@ export async function signedRequest(method: "GET" | "POST", path: string, option
   catch { throw new BinanceApiError(path, response.status, "MALFORMED_RESPONSE", "Binance API returned an unreadable response."); }
   const envelope = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const code = String(envelope.code ?? "0");
-  if (!response.ok || code !== "0") {
+  if (!response.ok || !Number.isFinite(Number(code)) || Number(code) !== 0) {
     const message = typeof envelope.msg === "string" ? envelope.msg.slice(0, 200) : "Binance API returned an error.";
     throw new BinanceApiError(path, response.status, code, message);
   }
