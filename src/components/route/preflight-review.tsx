@@ -70,6 +70,8 @@ function FullReview({ data }: { data: RoutePreflight }) {
   const [savedRoute, setSavedRoute] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [firstStep, setFirstStep] = useState<{ actionKind: string; amountHuman: string | null; tokenLabel: string;
+    minimumReceiveHuman: string | null; actionHash: string; simulationStatus: string } | null>(null);
   useEffect(() => {
     const refresh = () => { void fetch("/api/auth/session", { cache: "no-store" }).then(async response => {
       const session = await response.json() as { wallet?: string | null };
@@ -94,6 +96,16 @@ function FullReview({ data }: { data: RoutePreflight }) {
     } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
     finally { setSaving(false); }
   }
+  async function prepareFirstStep() {
+    if (!savedRoute || firstStep) return;
+    setSaving(true); setSaveError("");
+    try {
+      const response = await fetch(`/api/execution/routes/${savedRoute}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!response.ok) throw new Error("A fresh read-only action could not be built. The route may need another review.");
+      setFirstStep(await response.json() as NonNullable<typeof firstStep>);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
+    finally { setSaving(false); }
+  }
   const approvals = [data.leg1, data.leg2Indicative, data.venusDepositIndicative].flatMap(stage => stage.actions).filter(action => action.kind === "APPROVAL");
   return <section className="preflight-review" id="preflight-review" aria-live="polite"><div className="preflight-review-head"><div><div className="eyebrow">READ-ONLY PREFLIGHT · BNB CHAIN</div><h2>NVIDIA → Venus</h2><p>Binance-built transaction actions and EquityRelay’s bounded approval replacement. Nothing has been signed or submitted.</p></div><span className={`overall-tag ${data.overallPreflightState.toLowerCase()}`}>{data.overallPreflightState.replaceAll("_", " ")}</span></div>
     <div className="preflight-summary authorization-summary"><div><small>ROUTE POLICY</small><strong className="good">{data.routePolicy}</strong></div><div><small>TRANSACTION BUILD</small><strong>{[data.leg1, data.leg2Indicative, data.venusDepositIndicative].every(stage => stage.buildStatus === "READY") ? "READY" : "UNAVAILABLE"}</strong></div><div><small>AUTHORIZATION SAFETY</small><strong>{data.authorizationSafety.replaceAll("_", " ")}</strong></div><div><small>SIMULATION</small><strong>{data.overallPreflightState === "WALLET_STATE_BLOCKED" ? "WALLET STATE BLOCKED" : data.overallPreflightState.replaceAll("_", " ")}</strong></div><div><small>EXECUTION READINESS</small><strong>{data.executionReadiness.replaceAll("_", " ")}</strong></div></div>
@@ -101,7 +113,8 @@ function FullReview({ data }: { data: RoutePreflight }) {
     <Stage number="01" stage={data.leg1} /><Stage number="02" stage={data.leg2Indicative} /><Stage number="03" stage={data.venusDepositIndicative} />
     <div className="safety-summary"><div className="eyebrow">SAFETY SUMMARY</div><h3>What the evidence says</h3><p>EquityRelay never asks for unlimited token access when the route only requires a fixed amount.</p><ul>{data.safetyWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul><p>Future execution requires three separate confirmations: leave Ondo, convert the actual settled USDT, and supply the actual received NVDAB to Venus. This review is read-only.</p></div>
     <div className="execution-review-save"><div><span className="eyebrow">AUTHENTICATED EXECUTION REVIEW</span><p>{savedRoute ? "Review saved with your authenticated wallet. No transaction was prepared for signing." : walletMatches ? "Your signed-in wallet matches the quote address. Save a fresh policy-passing route record for later review." : wallet ? "The signed-in wallet differs from the quote address. Rebuild the quote for your signed-in wallet." : "Connect and authenticate the quote wallet above to save this review."}</p></div>
-      {savedRoute ? <Link href={`/proof/route/${savedRoute}`}>View route status ↗</Link> : <button type="button" onClick={() => void saveReview()} disabled={!walletMatches || saving}>{saving ? "Refreshing route…" : "Save read-only review"}</button>}
+      {savedRoute ? <><Link href={`/proof/route/${savedRoute}`}>View route status ↗</Link><button type="button" onClick={() => void prepareFirstStep()} disabled={saving || !!firstStep}>{firstStep ? "First action reviewed" : saving ? "Building…" : "Build read-only first action"}</button></> : <button type="button" onClick={() => void saveReview()} disabled={!walletMatches || saving}>{saving ? "Refreshing route…" : "Save read-only review"}</button>}
+      {firstStep && <div className="saved-action-summary"><p>First action: {firstStep.actionKind === "APPROVAL" ? "bounded approval" : "swap"} · {firstStep.amountHuman ?? "Exact raw amount"} {firstStep.tokenLabel} · Binance simulation {firstStep.simulationStatus.replaceAll("_", " ")}. Wallet signing remains disabled.</p><details><summary>Inspect action identity</summary><code>{firstStep.actionHash}</code></details></div>}
       {saveError && <small role="alert">{saveError}</small>}</div>
     <div className="execution-steps"><div className="eyebrow">FUTURE CONFIRMATIONS</div><div><strong>01 · Leave Ondo</strong><span>Review bounded source approval and minimum USDT receive</span><button type="button" disabled>Review · mainnet execution not armed</button></div><div><strong>02 · Change representation</strong><span>Locked until leg 1 confirms and actual USDT is measured</span></div><div><strong>03 · Supply to Venus</strong><span>Locked until leg 2 confirms and actual NVDAB is measured</span></div></div>
     <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> NOTHING HAS BEEN SIGNED OR SUBMITTED <span>·</span> MAINNET EXECUTION NOT ARMED</div>
