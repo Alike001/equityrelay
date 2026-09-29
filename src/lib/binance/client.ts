@@ -47,7 +47,7 @@ export async function signedRequest(method: "GET" | "POST", path: string, option
   catch { throw new BinanceApiError(path, response.status, "MALFORMED_RESPONSE", "Binance API returned an unreadable response."); }
   const envelope = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const code = String(envelope.code ?? "0");
-  if (!response.ok || !Number.isFinite(Number(code)) || Number(code) !== 0) {
+  if (!response.ok || !Number.isFinite(Number(code)) || Number(code) !== 0 || envelope.success === false) {
     const message = typeof envelope.msg === "string" ? envelope.msg.slice(0, 200) : "Binance API returned an error.";
     throw new BinanceApiError(path, response.status, code, message);
   }
