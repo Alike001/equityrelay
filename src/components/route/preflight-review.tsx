@@ -40,10 +40,15 @@ function ActionRow({ action }: { action: PreflightAction }) {
 }
 
 function Stage({ number, stage }: { number: string; stage: PreflightStage }) {
+  const simulation = stage.actions.find(action => action.kind === "SWAP" || action.kind === "RFQ" || action.kind === "DEPOSIT")?.simulation;
   return <article className="preflight-stage"><div className="preflight-stage-head"><span className="stage-number">{number}</span><div><h3>{stage.label}</h3>{stage.indicative && <small>INDICATIVE · MUST BE REFRESHED LATER</small>}</div><strong className={`build-tag ${stage.buildStatus.toLowerCase()}`}>BUILD {stage.buildStatus}</strong></div>
     <div className="simulation-line"><span>BINANCE SIMULATION</span><strong className={`simulation-status ${stage.simulationStatus.toLowerCase()}`}>{stage.simulationStatus.replaceAll("_", " ")}</strong></div>
     {stage.reason && <p className="stage-reason">{stage.reason}</p>}
     {stage.actions.length ? <div className="preflight-actions">{stage.actions.map((action, index) => <ActionRow key={`${action.kind}-${index}`} action={action} />)}</div> : <p className="stage-no-actions">No validated unsigned action is available for this stage.</p>}
+    {simulation && (simulation.balanceChanges.length > 0 || simulation.allowanceChanges.length > 0) && <details className="simulation-evidence"><summary>Inspect simulation changes returned by Binance</summary>
+      {simulation.balanceChanges.map((change, index) => <p key={`balance-${index}`}>Balance · {change.tokenAddress} · {change.change}</p>)}
+      {simulation.allowanceChanges.map((change, index) => <p key={`allowance-${index}`}>Allowance · {change.tokenAddress} · {change.before} → {change.after}</p>)}
+    </details>}
     {stage.previewDetails && <div className="stage-preview-details">
       {stage.previewDetails.estimatedNetworkFee && <span>Estimated network fee: {stage.previewDetails.estimatedNetworkFee}</span>}
       {stage.previewDetails.healthFactorBefore && <span>Health factor: {stage.previewDetails.healthFactorBefore} → {stage.previewDetails.healthFactorAfter ?? "unavailable"}</span>}
@@ -54,8 +59,9 @@ function Stage({ number, stage }: { number: string; stage: PreflightStage }) {
 }
 
 function FullReview({ data }: { data: RoutePreflight }) {
+  const approvals = [data.leg1, data.leg2Indicative, data.venusDepositIndicative].flatMap(stage => stage.actions).filter(action => action.kind === "APPROVAL");
   return <section className="preflight-review" id="preflight-review" aria-live="polite"><div className="preflight-review-head"><div><div className="eyebrow">READ-ONLY PREFLIGHT · BNB CHAIN</div><h2>NVIDIA → Venus</h2><p>Exact unsigned actions returned by Binance for this quote. Nothing has been signed or submitted.</p></div><span className={`overall-tag ${data.overallPreflightState.toLowerCase()}`}>{data.overallPreflightState.replaceAll("_", " ")}</span></div>
-    <div className="preflight-summary"><div><small>ROUTE POLICY</small><strong className="good">{data.routePolicy}</strong></div><div><small>PROJECTED RETENTION</small><strong>{shortNumber(data.routePreview.retentionPercent)}%</strong></div><div><small>TRANSACTION REVIEW</small><strong>{data.overallPreflightState.replaceAll("_", " ")}</strong></div></div>
+    <div className="preflight-summary"><div><small>ROUTE POLICY</small><strong className="good">{data.routePolicy}</strong></div><div><small>PROJECTED RETENTION</small><strong>{shortNumber(data.routePreview.retentionPercent)}%</strong></div><div><small>APPROVALS REQUESTED</small><strong>{approvals.length} unsigned</strong></div></div>
     <Stage number="01" stage={data.leg1} /><Stage number="02" stage={data.leg2Indicative} /><Stage number="03" stage={data.venusDepositIndicative} />
     <div className="safety-summary"><div className="eyebrow">SAFETY SUMMARY</div><h3>What the evidence says</h3><ul>{data.safetyWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul><p>Route-policy PASS is separate from transaction-build and simulation results. This review is read-only and does not authorize execution.</p></div>
     <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> NOTHING HAS BEEN SIGNED OR SUBMITTED</div>
