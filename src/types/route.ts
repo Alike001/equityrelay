@@ -86,4 +86,11 @@ export type RouteUnavailable = {
   message: string;
 };
 
-export type PreviewResult = RouteDecision | RouteUnavailable;
+export type RouteBlocked = {
+  kind: "blocked";
+  state: "BLOCKED";
+  reasons: ReasonCode[];
+  message: string;
+};
+
+export type PreviewResult = RouteDecision | RouteBlocked | RouteUnavailable;
