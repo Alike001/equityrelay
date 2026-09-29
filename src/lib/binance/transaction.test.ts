@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 vi.mock("server-only", () => ({}));
 
 import { buildSwapTransaction } from "./swap-build";
@@ -55,6 +57,14 @@ describe("read-only transaction builders", () => {
     queue(envelope({ executionMode: "SWAP", routerResult: route, tx: { from: owner, to: router, data: "0x12345678", value: "1", minReceiveAmount: "98" } }));
     await expect(buildSwapTransaction(quote(), owner, "0.2")).rejects.toThrow("UNEXPECTED_NATIVE_VALUE");
   });
+  it("rejects build route identity changes and slippage above the policy-derived cap", async () => {
+    const route = { binanceChainId: "56", fromTokenAmount: "100", toTokenAmount: "99", fromToken: { tokenContractAddress: NVDAON_ADDRESS }, toToken: { tokenContractAddress: USDT_ADDRESS } };
+    queue(envelope({ executionMode: "SWAP", routerResult: { ...route, toToken: { tokenContractAddress: NVDAB_ADDRESS } }, tx: { from: owner, to: router, data: "0x12345678", value: "0", minReceiveAmount: "98" } }));
+    await expect(buildSwapTransaction(quote(), owner, "0.2")).rejects.toThrow("BUILD_ROUTE_IDENTITY_MISMATCH");
+    vi.unstubAllGlobals();
+    queue(envelope({ executionMode: "SWAP", routerResult: route, tx: { from: owner, to: router, data: "0x12345678", value: "0", minReceiveAmount: "98", slippagePercent: "0.3" } }));
+    await expect(buildSwapTransaction(quote(), owner, "0.2")).rejects.toThrow("BUILD_SLIPPAGE_EXCEEDS_POLICY");
+  });
   it("sends only evmTx to the simulation API and rejects business errors", async () => {
     const calls = queue(envelope({ status: "SUCCESS", balanceChanges: [], allowanceChanges: [] }));
     expect((await simulateEvmTransaction({ from: owner, to: router, value: "0", data: "0x12345678" })).status).toBe("PASSED");
@@ -97,6 +107,21 @@ describe("read-only transaction builders", () => {
     expect(BrowserIntentSchema.safeParse(intent).success).toBe(true);
     for (const extra of [{ tokenAddress: NVDAON_ADDRESS }, { investmentId: "injected" }, { calldata: "0x1234" }]) {
       expect(BrowserIntentSchema.safeParse({ ...intent, ...extra }).success).toBe(false);
+    }
+  });
+});
+
+describe("Phase 2A surface boundary", () => {
+  it("exposes only preview and preflight API routes and contains no wallet signing or broadcast implementation", () => {
+    const apiRoot = join(process.cwd(), "src/app/api/route");
+    expect(readdirSync(apiRoot).sort()).toEqual(["preflight", "preview"]);
+    for (const path of ["src/lib/binance", "src/app/api/route"]) {
+      const entries = readdirSync(join(process.cwd(), path), { recursive: true });
+      for (const entry of entries) {
+        if (typeof entry !== "string" || !entry.endsWith(".ts") || entry.endsWith(".test.ts")) continue;
+        const source = readFileSync(join(process.cwd(), path, entry), "utf8");
+        expect(source).not.toMatch(/\b(?:privateKey|seedPhrase|signTransaction|sendRawTransaction|broadcastTransaction)\b/);
+      }
     }
   });
 });
