@@ -40,6 +40,7 @@ export type VenusRedeemBuild = {
   amountUnderlyingHuman: string;
   valueWei: string | null;
   calldataSelector: string | null;
+  rawCalldata: `0x${string}` | null;
   gasLimit: string | null;
   maxFeePerGas: string | null;
   maxPriorityFeePerGas: string | null;
@@ -51,10 +52,16 @@ function unavailable(amountRaw: string, amountHuman: string, reason: string, sta
   return { buildStatus: "UNAVAILABLE", simulationStatus: status, reason, approvalRequired: false, target: null,
     functionName: null, redeemVTokensRaw: null, exchangeRateMantissa: null, expectedUnderlyingOutRaw: amountRaw,
     amountUnderlyingRaw: amountRaw, amountUnderlyingHuman: amountHuman, valueWei: null,
-    calldataSelector: null, gasLimit: null, maxFeePerGas: null, maxPriorityFeePerGas: null, redeemDelayDays: null, preview: null };
+    calldataSelector: null, rawCalldata: null, gasLimit: null, maxFeePerGas: null, maxPriorityFeePerGas: null, redeemDelayDays: null, preview: null };
 }
 
-export async function buildVenusRedeem(owner: Address, destination: DestinationSnapshot, target: RepresentationSnapshot, amountRaw: string): Promise<VenusRedeemBuild> {
+export async function buildVenusRedeem(owner: Address, destination: DestinationSnapshot, target: RepresentationSnapshot, amountRaw: string,
+  exactVTokensRaw?: string): Promise<VenusRedeemBuild> {
+  if (exactVTokensRaw) {
+    if (!/^[1-9]\d*$/.test(exactVTokensRaw)) throw new Error("INVALID_REDEEM_AMOUNT");
+    const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: VENUS_VNVDAB_ADDRESS, abi: redeemAbi, functionName: "exchangeRateStored" }));
+    amountRaw = ((BigInt(exactVTokensRaw) * rate + 10n ** 18n - 1n) / 10n ** 18n).toString();
+  }
   const amountHuman = decimalText(rawToDecimal(amountRaw, target.decimals));
   if (!destination.investable || !sameAddress(destination.assetAddress, NVDAB_ADDRESS) || !sameAddress(target.address, NVDAB_ADDRESS))
     return unavailable(amountRaw, amountHuman, "DESTINATION_UNAVAILABLE", "UNAVAILABLE");
@@ -91,7 +98,8 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
   } else if (decoded.functionName === "redeem") {
     const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: VENUS_VNVDAB_ADDRESS, abi: redeemAbi, functionName: "exchangeRateStored" }));
     const expectedVTokens = BigInt(amountRaw) * 10n ** 18n / rate;
-    if (expectedVTokens <= 0n || decodedAmount !== expectedVTokens) throw new Error("REDEEM_EXCHANGE_RATE_MISMATCH");
+    if (expectedVTokens <= 0n || decodedAmount !== expectedVTokens || exactVTokensRaw && decodedAmount.toString() !== exactVTokensRaw)
+      throw new Error("REDEEM_EXCHANGE_RATE_MISMATCH");
     redeemVTokensRaw = expectedVTokens.toString();
     exchangeRateMantissa = rate.toString();
     expectedUnderlyingOutRaw = (expectedVTokens * rate / 10n ** 18n).toString();
@@ -106,7 +114,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
     buildStatus: "READY", simulationStatus, reason: failReason, approvalRequired: false,
     target: item.to as Address, functionName: decoded.functionName, redeemVTokensRaw, exchangeRateMantissa, expectedUnderlyingOutRaw,
     amountUnderlyingRaw: amountRaw, amountUnderlyingHuman: amountHuman,
-    valueWei: "0", calldataSelector: item.data.slice(0, 10), gasLimit: parseGas(item.gasLimit),
+    valueWei: "0", calldataSelector: item.data.slice(0, 10), rawCalldata: item.data as `0x${string}`, gasLimit: parseGas(item.gasLimit),
     maxFeePerGas: parseGas(item.maxFeePerGas, true), maxPriorityFeePerGas: parseGas(item.maxPriorityFeePerGas, true),
     redeemDelayDays: build.redeemDelayDays ?? null,
     preview: preview ? {

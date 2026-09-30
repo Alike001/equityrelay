@@ -2,7 +2,7 @@ import type { Address, BrowserIntent, RouteDecision } from "./route";
 
 export type SimulationStatus = "PASSED" | "FAILED" | "BLOCKED_BY_WALLET_STATE" | "UNAVAILABLE";
 export type BuildStatus = "READY" | "UNAVAILABLE";
-export type TransactionAction = "APPROVAL" | "SWAP" | "RFQ" | "DEPOSIT";
+export type TransactionAction = "APPROVAL" | "SWAP" | "RFQ" | "DEPOSIT" | "REDEEM";
 export type AuthorizationStatus = "NOT_REQUIRED" | "BOUNDED_READY" | "BROAD_APPROVAL_REJECTED" | "INVALID_APPROVAL" | "REQUIRES_ONCHAIN_ALLOWANCE" | "UNAVAILABLE";
 export type AuthorizationReasonCode = "APPROVAL_EXACT_AMOUNT" | "BLOCK_AUTHORIZATION_SCOPE" | "APPROVAL_BELOW_REQUIRED" | "INVALID_APPROVAL_CALLDATA" | "INVALID_APPROVAL_SELECTOR" | "ZERO_APPROVAL_SPENDER" | "APPROVAL_SPENDER_MISMATCH" | "APPROVAL_TOKEN_MISMATCH" | "UNEXPECTED_NATIVE_VALUE" | "BINANCE_APPROVAL_NOT_RETURNED" | "BINANCE_BROAD_APPROVAL_REPLACED";
 export type AuthorizationReview = {

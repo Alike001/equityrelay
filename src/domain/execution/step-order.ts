@@ -4,6 +4,35 @@ import type { ExecutionActionV1 } from "./action";
 
 export function requireStepOrder(session: ExecutionSession, action: ExecutionActionV1, confirmedStages: ReadonlySet<string>): void {
   if (session.id !== action.routeId || !sameAddress(session.owner, action.from)) throw new Error("ROUTE_WALLET_MISMATCH");
+  if (action.stage === "VENUS_REDEEM") {
+    if (!session.recovery || session.recovery.state !== "REDEEM_REVIEW_READY" || !confirmedStages.has("VENUS_DEPOSIT") ||
+        action.kind !== "REDEEM" || action.amountInRaw !== session.recovery.venusPosition.vTokenAmountRaw)
+      throw new Error("VERIFIED_VENUS_POSITION_REQUIRED");
+    return;
+  }
+  if (action.stage.startsWith("EXIT_")) {
+    if (!session.recovery || session.recovery.state !== "EXIT_REVIEW_READY" || !session.recovery.redeemSettlement ||
+        !confirmedStages.has("VENUS_REDEEM") || action.amountInRaw !== session.recovery.redeemSettlement.actualAmountOutRaw ||
+        action.planIdentity !== session.recovery.freshExitQuote?.quoteId) throw new Error("ACTUAL_REDEEMED_NVDAB_REQUIRED");
+    if (action.kind === "APPROVAL" && (!action.approvalAmountRaw || action.approvalAmountRaw !== action.amountInRaw))
+      throw new Error("BOUNDED_APPROVAL_REQUIRED");
+    if (action.kind === "SWAP" && !confirmedStages.has("EXIT_APPROVAL")) {
+      const review = session.reviews.EXIT_TO_USDT;
+      if (!review?.allowanceSufficient) throw new Error("APPROVAL_CONFIRMATION_REQUIRED");
+    }
+    return;
+  }
+  if (action.stage.startsWith("TEST_SETUP_")) {
+    if (session.stage !== "ROUTE_POLICY_PASS" || session.testSetup?.state !== "SETUP_REVIEW_READY" ||
+        action.amountInRaw !== session.testSetup.quote.inputRaw || action.planIdentity !== session.testSetup.quote.quoteId)
+      throw new Error("TEST_SETUP_SEPARATE_REVIEW_REQUIRED");
+    if (action.kind === "APPROVAL" && (session.testSetup.review.allowanceSufficient ||
+        action.approvalAmountRaw !== action.amountInRaw || !sameAddress(action.approvalSpender ?? "", session.testSetup.review.approval?.spender ?? "")))
+      throw new Error("BOUNDED_APPROVAL_REQUIRED");
+    if (action.kind === "SWAP" && !session.testSetup.review.allowanceSufficient && !confirmedStages.has("TEST_SETUP_APPROVAL"))
+      throw new Error("APPROVAL_CONFIRMATION_REQUIRED");
+    return;
+  }
   const leg1 = action.stage.startsWith("LEG1_");
   const leg2 = action.stage.startsWith("LEG2_");
   const review = session.reviews[leg1 ? "LEAVE_ONDO" : leg2 ? "CHANGE_REPRESENTATION" : "SUPPLY_TO_VENUS"];

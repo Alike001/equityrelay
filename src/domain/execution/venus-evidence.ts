@@ -12,6 +12,11 @@ export const venusSupplyAbi = parseAbi([
   "function mintBehalf(address receiver, uint256 mintAmount) returns (uint256, uint256)",
 ]);
 
+export const venusRedeemAbi = parseAbi([
+  "event Redeem(address redeemer, uint256 redeemAmount, uint256 redeemTokens, uint256 totalSupply)",
+  "function redeem(uint256 redeemTokens) returns (uint256)",
+]);
+
 export const venusMarketReadAbi = parseAbi([
   "function underlying() view returns (address)",
   "function symbol() view returns (string)",
@@ -54,6 +59,69 @@ export type VenusSupplyEvidence = {
 export type VenusSupplyInspection =
   | { status: "VERIFIED"; evidence: VenusSupplyEvidence }
   | { status: "REJECTED"; reason: VenusSupplyReason };
+
+export type VenusRedeemReason = "VENUS_REDEEM_CALL_NOT_IDENTIFIED" | "VENUS_REDEEM_EVENT_MISSING_OR_AMBIGUOUS" |
+  "VENUS_REDEEM_AMOUNT_MISMATCH" | "VENUS_REDEEMER_MISMATCH" | "VENUS_REDEEM_TRANSFER_MISSING_OR_AMBIGUOUS" |
+  "VENUS_REDEEM_POSITION_EVIDENCE_MISMATCH";
+export type VenusRedeemEvidence = { transactionHash: Hex; blockNumber: string; market: Address; underlying: Address;
+  redeemer: Address; vTokensRedeemedRaw: string; underlyingReceivedRaw: string; resultingVTokenBalanceRaw: string };
+
+export function decodeVenusRedeemCall(data: Hex): string {
+  try {
+    const decoded = decodeFunctionData({ abi: venusRedeemAbi, data });
+    if (decoded.functionName === "redeem" && decoded.args[0] > 0n) return decoded.args[0].toString();
+  } catch { /* Fail closed below. */ }
+  throw new Error("VENUS_REDEEM_CALL_NOT_IDENTIFIED");
+}
+
+export function inspectVenusRedeem(input: {
+  transactionHash: Hex; blockNumber: string; transactionFrom: Address; transactionTo: Address; transactionValueRaw: string;
+  calldata: Hex; expectedWallet: Address; expectedVTokensRaw: string; logs: VenusReceiptLog[];
+  position: { beforeBlock: string; afterBlock: string; vTokenBalanceBeforeRaw: string; vTokenBalanceAfterRaw: string;
+    accountSnapshotAfter: readonly [string, string, string, string]; marketUnderlyingBalanceBeforeRaw: string; marketUnderlyingBalanceAfterRaw: string };
+}): { status: "VERIFIED"; evidence: VenusRedeemEvidence } | { status: "REJECTED"; reason: VenusRedeemReason } {
+  const reject = (reason: VenusRedeemReason) => ({ status: "REJECTED" as const, reason });
+  if (!sameAddress(input.transactionFrom, input.expectedWallet) || !sameAddress(input.transactionTo, VENUS_VNVDAB_ADDRESS) || input.transactionValueRaw !== "0")
+    return reject("VENUS_REDEEMER_MISMATCH");
+  let called: string;
+  try { called = decodeVenusRedeemCall(input.calldata); } catch { return reject("VENUS_REDEEM_CALL_NOT_IDENTIFIED"); }
+  if (called !== input.expectedVTokensRaw) return reject("VENUS_REDEEM_AMOUNT_MISMATCH");
+  const events: Array<{ redeemer: Address; underlying: bigint; tokens: bigint; balance: bigint }> = [];
+  const transfers: bigint[] = [];
+  for (const log of input.logs) {
+    if (sameAddress(log.address, VENUS_VNVDAB_ADDRESS)) {
+      try {
+        const decoded = decodeEventLog({ abi: venusRedeemAbi, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]], strict: true });
+        if (decoded.eventName === "Redeem") events.push({ redeemer: decoded.args.redeemer as Address, underlying: decoded.args.redeemAmount,
+          tokens: decoded.args.redeemTokens, balance: decoded.args.totalSupply });
+      } catch { /* Ignore unrelated market logs. */ }
+    }
+    if (sameAddress(log.address, NVDAB_ADDRESS)) {
+      try {
+        const decoded = decodeEventLog({ abi: erc20Abi, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]], strict: true });
+        if (decoded.eventName === "Transfer" && sameAddress(decoded.args.from, VENUS_VNVDAB_ADDRESS) && sameAddress(decoded.args.to, input.expectedWallet))
+          transfers.push(decoded.args.value);
+      } catch { /* Ignore unrelated underlying logs. */ }
+    }
+  }
+  if (events.length !== 1) return reject("VENUS_REDEEM_EVENT_MISSING_OR_AMBIGUOUS");
+  const event = events[0];
+  if (!sameAddress(event.redeemer, input.expectedWallet)) return reject("VENUS_REDEEMER_MISMATCH");
+  if (event.tokens.toString() !== input.expectedVTokensRaw || event.underlying <= 0n) return reject("VENUS_REDEEM_AMOUNT_MISMATCH");
+  if (transfers.length !== 1 || transfers[0] !== event.underlying) return reject("VENUS_REDEEM_TRANSFER_MISSING_OR_AMBIGUOUS");
+  try {
+    const before = BigInt(input.position.vTokenBalanceBeforeRaw), after = BigInt(input.position.vTokenBalanceAfterRaw);
+    const underlyingBefore = BigInt(input.position.marketUnderlyingBalanceBeforeRaw), underlyingAfter = BigInt(input.position.marketUnderlyingBalanceAfterRaw);
+    const snapshotError = BigInt(input.position.accountSnapshotAfter[0]), snapshotTokens = BigInt(input.position.accountSnapshotAfter[1]);
+    if (input.position.beforeBlock !== (BigInt(input.blockNumber) - 1n).toString() || input.position.afterBlock !== input.blockNumber ||
+        before - after !== event.tokens || underlyingBefore - underlyingAfter !== event.underlying || snapshotError !== 0n ||
+        snapshotTokens !== after || event.balance !== after) return reject("VENUS_REDEEM_POSITION_EVIDENCE_MISMATCH");
+  } catch { return reject("VENUS_REDEEM_POSITION_EVIDENCE_MISMATCH"); }
+  return { status: "VERIFIED", evidence: { transactionHash: input.transactionHash, blockNumber: input.blockNumber,
+    market: VENUS_VNVDAB_ADDRESS, underlying: NVDAB_ADDRESS, redeemer: input.expectedWallet,
+    vTokensRedeemedRaw: event.tokens.toString(), underlyingReceivedRaw: event.underlying.toString(),
+    resultingVTokenBalanceRaw: input.position.vTokenBalanceAfterRaw } };
+}
 
 export function decodeVenusSupplyCall(data: Hex):
   | { eventType: "Mint"; receiver: null; amountRaw: string }

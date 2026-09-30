@@ -16,6 +16,17 @@ export type EquityRelayExecutionReceiptV1 = {
   steps: Array<{ stage: string; txHash: string; blockNumber: string; approvalToken: string | null; approvalSpender: string | null; approvalAmountRaw: string | null }>;
   createdAt: string;
 };
+export type EquityRelayRoundTripReceiptV2 = {
+  version: "EquityRelayRoundTripReceiptV2";
+  routeId: string;
+  status: "VERIFIED";
+  wallet: string;
+  product: { sourceAmountRaw: string; leg1TxHash: string; leg1Block: string; settledUsdtRaw: string;
+    leg2TxHash: string; leg2Block: string; settledNvdabRaw: string; venusSupplyTxHash: string; venusSupplyBlock: string };
+  recovery: { redeemTxHash: string; redeemBlock: string; actualNvdabRedeemedRaw: string; exitTxHash: string; exitBlock: string; actualUsdtRecoveredRaw: string };
+  capital: { capitalInUsdtRaw: string | null; actualCapitalRecoveredUsdtRaw: string; gasSpentWei: string | null; routeFrictionUsdtRaw: string | null };
+  createdAt: string;
+};
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -24,6 +35,24 @@ function canonical(value: unknown): string {
 }
 export function receiptHash(receipt: EquityRelayExecutionReceiptV1): `0x${string}` {
   return keccak256(stringToHex(canonical(receipt)));
+}
+export function roundTripReceiptHash(receipt: EquityRelayRoundTripReceiptV2): `0x${string}` {
+  return keccak256(stringToHex(canonical(receipt)));
+}
+export function assertRoundTripReceipt(receipt: EquityRelayRoundTripReceiptV2): void {
+  const hash = /^0x[a-fA-F0-9]{64}$/, raw = /^(?:0|[1-9]\d*)$/;
+  if (receipt.version !== "EquityRelayRoundTripReceiptV2" || receipt.status !== "VERIFIED" ||
+      !hash.test(receipt.product.leg1TxHash) || !hash.test(receipt.product.leg2TxHash) ||
+      !hash.test(receipt.product.venusSupplyTxHash) || !hash.test(receipt.recovery.redeemTxHash) || !hash.test(receipt.recovery.exitTxHash) ||
+      ![receipt.product.leg1Block, receipt.product.leg2Block, receipt.product.venusSupplyBlock,
+        receipt.recovery.redeemBlock, receipt.recovery.exitBlock].every(value => /^[1-9]\d*$/.test(value)) ||
+      ![receipt.product.sourceAmountRaw, receipt.product.settledUsdtRaw, receipt.product.settledNvdabRaw,
+        receipt.recovery.actualNvdabRedeemedRaw, receipt.recovery.actualUsdtRecoveredRaw,
+        receipt.capital.actualCapitalRecoveredUsdtRaw].every(value => raw.test(value) && BigInt(value) > 0n) ||
+      receipt.capital.capitalInUsdtRaw !== null && !raw.test(receipt.capital.capitalInUsdtRaw) ||
+      receipt.capital.gasSpentWei !== null && !raw.test(receipt.capital.gasSpentWei) ||
+      receipt.capital.routeFrictionUsdtRaw !== null && !/^-?\d+$/.test(receipt.capital.routeFrictionUsdtRaw))
+    throw new Error("ROUND_TRIP_RECEIPT_INCOMPLETE");
 }
 export function assertReceiptStatus(receipt: EquityRelayExecutionReceiptV1): void {
   if (receipt.status !== "VERIFIED") return;

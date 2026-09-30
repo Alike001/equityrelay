@@ -4,7 +4,7 @@ import { recheckLeg2AfterLeg1 } from "@/domain/policy/evaluate";
 import { NVDAB_ADDRESS, sameAddress, USDT_ADDRESS, validateDestination, validateRepresentation } from "@/domain/routing/identity";
 import type { AuthorizationReview } from "@/types/preflight";
 import type { Address, DestinationSnapshot, QuoteSnapshot, RepresentationSnapshot, RouteDecision } from "@/types/route";
-import type { ConfirmationBoundary, ConfirmedTransaction, ExecutionReview, ExecutionSession, ExecutionStage, SettlementEvidence, TransactionObservation, VerifiedExecutionReceipt } from "@/types/execution";
+import type { ProductConfirmationBoundary, ConfirmedTransaction, ExecutionReview, ExecutionSession, ExecutionStage, SettlementEvidence, TransactionObservation, VerifiedExecutionReceipt } from "@/types/execution";
 
 const raw = /^[1-9]\d*$/;
 const txHash = /^0x[a-fA-F0-9]{64}$/;
@@ -43,7 +43,7 @@ export function beginExecutionSession(id: string, owner: Address, preview: Route
   return { id, owner, intent: { underlying: "NVDA", sourceRepresentation: "ondo", amount: preview.amount, destination: "venus", maxExposureLossBps: preview.maxExposureLossBps, takerAddress: owner },
     stage: "ROUTE_POLICY_PASS", originalSource: preview.evidence.source, originalSourceRaw: preview.evidence.sourceRaw, sourceShares: preview.sourceShares,
     initialQuote: preview.evidence.leg1, initialLeg2Indicative: preview.evidence.leg2, reviews: {}, confirmations: [], submitted: {}, leg1Settlement: null, leg2Settlement: null,
-    freshLeg2: null, freshTarget: null, venus: null, policyRecheck: null, events: [] };
+    freshLeg2: null, freshTarget: null, venus: null, policyRecheck: null, testSetup: null, recovery: null, events: [] };
 }
 
 export function prepareReview(session: ExecutionSession, review: ExecutionReview): ExecutionSession {
@@ -68,14 +68,14 @@ export function prepareReview(session: ExecutionSession, review: ExecutionReview
   return { ...advance(session, "VENUS_REVIEW", "SUPPLY_TO_VENUS_REVIEWED"), reviews: { ...session.reviews, [boundary]: review } };
 }
 
-export function recordConfirmation(session: ExecutionSession, boundary: ConfirmationBoundary): ExecutionSession {
+export function recordConfirmation(session: ExecutionSession, boundary: ProductConfirmationBoundary): ExecutionSession {
   const required = { LEAVE_ONDO: "LEG1_REVIEW", CHANGE_REPRESENTATION: "LEG2_REVIEW", SUPPLY_TO_VENUS: "VENUS_REVIEW" } as const;
   at(session, required[boundary]);
   if (!session.reviews[boundary]) throw new Error("REVIEW_REQUIRED");
   return { ...advance(session, session.stage, `${boundary}_USER_CONFIRMED`), confirmations: [...session.confirmations, boundary] };
 }
 
-export function submitPlannedAction(session: ExecutionSession, boundary: ConfirmationBoundary, kind: "APPROVAL" | "SWAP" | "DEPOSIT", observation: TransactionObservation): ExecutionSession {
+export function submitPlannedAction(session: ExecutionSession, boundary: ProductConfirmationBoundary, kind: "APPROVAL" | "SWAP" | "DEPOSIT", observation: TransactionObservation): ExecutionSession {
   const plan = { LEAVE_ONDO: { review: "LEG1_REVIEW", approved: "LEG1_APPROVAL_CONFIRMED", approvalPending: "LEG1_APPROVAL_PENDING", actionPending: "LEG1_SWAP_PENDING", approvalKey: "LEG1_APPROVAL", actionKey: "LEG1_SWAP" },
     CHANGE_REPRESENTATION: { review: "LEG2_REVIEW", approved: "LEG2_APPROVAL_CONFIRMED", approvalPending: "LEG2_APPROVAL_PENDING", actionPending: "LEG2_SWAP_PENDING", approvalKey: "LEG2_APPROVAL", actionKey: "LEG2_SWAP" },
     SUPPLY_TO_VENUS: { review: "VENUS_REVIEW", approved: "VENUS_APPROVAL_CONFIRMED", approvalPending: "VENUS_APPROVAL_PENDING", actionPending: "VENUS_DEPOSIT_PENDING", approvalKey: "VENUS_APPROVAL", actionKey: "VENUS_DEPOSIT" } } as const;
@@ -93,7 +93,7 @@ export function submitPlannedAction(session: ExecutionSession, boundary: Confirm
   return { ...advance(session, step.actionPending, `${kind}_SUBMITTED`), submitted: { ...session.submitted, [step.actionKey]: observation } };
 }
 
-export function observeTransaction(session: ExecutionSession, boundary: ConfirmationBoundary, kind: "APPROVAL" | "SWAP" | "DEPOSIT", observation: TransactionObservation): ExecutionSession {
+export function observeTransaction(session: ExecutionSession, boundary: ProductConfirmationBoundary, kind: "APPROVAL" | "SWAP" | "DEPOSIT", observation: TransactionObservation): ExecutionSession {
   const prefix = boundary === "LEAVE_ONDO" ? "LEG1" : boundary === "CHANGE_REPRESENTATION" ? "LEG2" : "VENUS";
   const key = `${prefix}_${kind === "DEPOSIT" ? "DEPOSIT" : kind === "SWAP" ? "SWAP" : "APPROVAL"}` as keyof ExecutionSession["submitted"];
   const old = session.submitted[key];

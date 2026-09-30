@@ -23,7 +23,7 @@ export async function requireActionReadiness(action: ExecutionActionV1, recommen
   ]);
   if (nativeBalance < BigInt(recommendedGasLimit) * gasPrice * 2n) throw new Error("INSUFFICIENT_BNB_GAS_RESERVE");
   if (tokenBalance < BigInt(action.amountInRaw)) throw new Error("INSUFFICIENT_SOURCE_BALANCE");
-  if (action.kind !== "APPROVAL") {
+  if (action.kind !== "APPROVAL" && action.kind !== "REDEEM") {
     const allowance = await client.readContract({ address: action.tokenIn, abi: erc20Abi, functionName: "allowance", args: [action.from, action.to] });
     if (allowance < BigInt(action.amountInRaw)) throw new Error("CONFIRMED_ALLOWANCE_REQUIRED");
   }

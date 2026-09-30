@@ -8,8 +8,11 @@ import type { Address, DestinationSnapshot, QuoteSnapshot } from "@/types/route"
 export async function createServerReview(input: { boundary: ConfirmationBoundary; owner: Address; action: PreflightAction; approval: AuthorizationReview | null; quote: QuoteSnapshot | null; destination: DestinationSnapshot | null }): Promise<ExecutionReview> {
   const { boundary, owner, action, approval, quote, destination } = input;
   if (!sameAddress(action.from, owner) || !action.to || action.chainId !== 56 || action.valueWei !== "0") throw new Error("INVALID_SERVER_ACTION");
-  if (boundary !== "SUPPLY_TO_VENUS" && (!quote || quote.inputRaw !== action.amountInRaw || !sameAddress(quote.from, action.tokenIn))) throw new Error("QUOTE_ACTION_MISMATCH");
+  if (!["SUPPLY_TO_VENUS", "REDEEM_VENUS"].includes(boundary) && (!quote || quote.inputRaw !== action.amountInRaw || !sameAddress(quote.from, action.tokenIn))) throw new Error("QUOTE_ACTION_MISMATCH");
   if (boundary === "SUPPLY_TO_VENUS" && (!destination?.investable || action.kind !== "DEPOSIT")) throw new Error("VENUS_NOT_READY");
+  if (boundary === "REDEEM_VENUS" && (!destination?.investable || action.kind !== "REDEEM" || approval)) throw new Error("VENUS_REDEEM_NOT_READY");
+  if (boundary === "REDEEM_VENUS") return { boundary, action, approval: null, allowanceSufficient: true,
+    simulation: action.simulation.status, quote: null, destination, createdAt: new Date().toISOString() };
   const spender = approval?.spender ?? action.to;
   if (!sameAddress(spender, action.to)) throw new Error("APPROVAL_SPENDER_MISMATCH");
   const currentAllowance = await readCurrentAllowance(action.tokenIn, owner, spender);

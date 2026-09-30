@@ -11,7 +11,16 @@ export default async function RouteProofPage({ params }: { params: Promise<{ id:
     proof.status === "FAILED" ? "Route stopped after a failed transaction." : proof.status === "PENDING" ? "Waiting for canonical confirmation." :
     proof.status === "UNAVAILABLE" ? "Route evidence is unavailable." : "No verified route yet.";
   return <><SiteHeader /><main className="wrap proof-main" style={{ paddingBlock: "72px 120px" }}><div className="eyebrow">ROUTE PROOF · {proof.status}</div><h1>{title}</h1>
-    {proof.status === "VERIFIED" ? <><p>Actual settled retention: {proof.receipt.settled.retentionPercent}%</p><p>Receipt hash: <code>{proof.receiptHash}</code></p><p>Wallet: {proof.receipt.wallet.slice(0, 6)}…{proof.receipt.wallet.slice(-4)}</p>
+    {proof.status === "VERIFIED" ? proof.receipt.version === "EquityRelayRoundTripReceiptV2" ? <><p>Product route and recovery completed from canonical settlement evidence.</p>
+      <p>Capital in: {proof.receipt.capital.capitalInUsdtRaw ?? "Not recorded"} raw USDT</p><p>Actual capital recovered: {proof.receipt.capital.actualCapitalRecoveredUsdtRaw} raw USDT</p>
+      <p>Gas: {proof.receipt.capital.gasSpentWei ?? "Not recorded"} wei · Route friction: {proof.receipt.capital.routeFrictionUsdtRaw ?? "Not recorded"} raw USDT</p>
+      <p>Receipt hash: <code>{proof.receiptHash}</code></p><p>Wallet: {proof.receipt.wallet.slice(0, 6)}…{proof.receipt.wallet.slice(-4)}</p>
+      <ul><li>Leave Ondo · block {proof.receipt.product.leg1Block} · <a href={`https://bscscan.com/tx/${proof.receipt.product.leg1TxHash}`} target="_blank" rel="noopener noreferrer">View transaction ↗</a></li>
+        <li>Change representation · block {proof.receipt.product.leg2Block} · <a href={`https://bscscan.com/tx/${proof.receipt.product.leg2TxHash}`} target="_blank" rel="noopener noreferrer">View transaction ↗</a></li>
+        <li>Venus supply · block {proof.receipt.product.venusSupplyBlock} · <a href={`https://bscscan.com/tx/${proof.receipt.product.venusSupplyTxHash}`} target="_blank" rel="noopener noreferrer">View transaction ↗</a></li>
+        <li>Venus redeem · block {proof.receipt.recovery.redeemBlock} · <a href={`https://bscscan.com/tx/${proof.receipt.recovery.redeemTxHash}`} target="_blank" rel="noopener noreferrer">View transaction ↗</a></li>
+        <li>Final exit · block {proof.receipt.recovery.exitBlock} · <a href={`https://bscscan.com/tx/${proof.receipt.recovery.exitTxHash}`} target="_blank" rel="noopener noreferrer">View transaction ↗</a></li></ul></>
+      : <><p>Actual settled retention: {proof.receipt.settled.retentionPercent}%</p><p>Receipt hash: <code>{proof.receiptHash}</code></p><p>Wallet: {proof.receipt.wallet.slice(0, 6)}…{proof.receipt.wallet.slice(-4)}</p>
       <ul>{proof.receipt.steps.map(step => <li key={step.stage}>{step.stage} · block {step.blockNumber} · <a href={`https://bscscan.com/tx/${step.txHash}`} target="_blank" rel="noopener noreferrer">View BscScan transaction ↗</a></li>)}</ul></>
       : <><p>{proof.status === "PARTIAL_ROUTE_STOPPED" ? "The first conversion completed. The policy stopped further action; funds remain in USDT." :
         proof.status === "UNKNOWN" ? "EquityRelay has not verified a mainnet route with this ID. A hash or quote alone is not proof." :

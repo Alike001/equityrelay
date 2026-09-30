@@ -7,8 +7,9 @@ import type { Address } from "@/types/route";
 export type ExecutionActionV1 = {
   version: "ExecutionActionV1";
   routeId: string;
-  stage: "LEG1_APPROVAL" | "LEG1_SWAP" | "LEG2_APPROVAL" | "LEG2_SWAP" | "VENUS_APPROVAL" | "VENUS_DEPOSIT";
-  kind: "APPROVAL" | "SWAP" | "DEPOSIT";
+  stage: "TEST_SETUP_APPROVAL" | "TEST_SETUP_SWAP" | "LEG1_APPROVAL" | "LEG1_SWAP" | "LEG2_APPROVAL" | "LEG2_SWAP" |
+    "VENUS_APPROVAL" | "VENUS_DEPOSIT" | "VENUS_REDEEM" | "EXIT_APPROVAL" | "EXIT_SWAP";
+  kind: "APPROVAL" | "SWAP" | "DEPOSIT" | "REDEEM";
   chainId: 56;
   from: Address;
   to: Address;
@@ -38,7 +39,8 @@ export function executionActionV1(input: {
       !dataHex.test(action.rawCalldata) || action.valueWei === null || !raw.test(action.valueWei) ||
       !/^[1-9]\d*$/.test(action.amountInRaw) || action.kind === "RFQ") throw new Error("INVALID_EXECUTION_ACTION");
   if (action.valueWei !== "0") throw new Error("UNEXPECTED_NATIVE_VALUE");
-  const expectedKind = stage.endsWith("APPROVAL") ? "APPROVAL" : stage.endsWith("DEPOSIT") ? "DEPOSIT" : "SWAP";
+  const expectedKind = stage.endsWith("APPROVAL") ? "APPROVAL" : stage.endsWith("DEPOSIT") ? "DEPOSIT" :
+    stage.endsWith("REDEEM") ? "REDEEM" : "SWAP";
   if (action.kind !== expectedKind) throw new Error("ACTION_STAGE_MISMATCH");
   let spender: Address | null = null, approvalAmountRaw: string | null = null;
   if (action.kind === "APPROVAL") {

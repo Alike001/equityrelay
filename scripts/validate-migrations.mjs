@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const db = new PGlite();
 try {
-  for (const file of ["001_execution.sql", "002_reservation_time.sql", "003_auth_rate_limit.sql"]) {
+  for (const file of ["001_execution.sql", "002_reservation_time.sql", "003_auth_rate_limit.sql", "004_recovery_lifecycle.sql"]) {
     await db.exec(readFileSync(join(root, "db/migrations", file), "utf8"));
   }
   const result = await db.query("SELECT count(*)::integer AS count FROM information_schema.tables WHERE table_schema='public'");

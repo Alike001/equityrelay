@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
-const migrations = ["001_execution.sql", "002_reservation_time.sql", "003_auth_rate_limit.sql"].map(file => join(process.cwd(), "db/migrations", file));
+const migrations = ["001_execution.sql", "002_reservation_time.sql", "003_auth_rate_limit.sql", "004_recovery_lifecycle.sql"].map(file => join(process.cwd(), "db/migrations", file));
 const routeId = "11111111-1111-4111-8111-111111111111";
 const wallet = "0x1111111111111111111111111111111111111111";
 describe("PostgreSQL durable schema", () => {
@@ -15,6 +15,7 @@ describe("PostgreSQL durable schema", () => {
       for (const migration of migrations) await db.exec(await readFile(migration, "utf8"));
       await db.query(`INSERT INTO execution_routes(route_id,wallet,chain_id,original_intent,original_source_raw,max_exposure_loss_bps,lifecycle_state,session_snapshot)
         VALUES ($1,$2,56,'{}',500,50,'LEG1_REVIEW','{}')`, [routeId,wallet]);
+      await db.query("UPDATE execution_routes SET recovery_state='RECOVERABLE_FROM_VENUS' WHERE route_id=$1", [routeId]);
       await db.query(`INSERT INTO auth_challenges(nonce_hash,wallet,chain_id,domain,uri,message,issued_at,expires_at)
         VALUES ('noncehash',$1,56,'localhost:3000','http://localhost:3000','challenge',now(),now()+interval '5 minutes')`, [wallet]);
       await expect(db.query(`INSERT INTO auth_challenges(nonce_hash,wallet,chain_id,domain,uri,message,issued_at,expires_at)
@@ -46,9 +47,10 @@ describe("PostgreSQL durable schema", () => {
       expect(expired.rows).toHaveLength(1);
       await db.close();
       db = new PGlite(directory);
-      const restored = await db.query<{ version: string; used_at: Date }>(`SELECT version,used_at FROM execution_routes r JOIN confirmation_intents c ON c.route_id=r.route_id WHERE r.route_id=$1`, [routeId]);
+      const restored = await db.query<{ version: string; used_at: Date; recovery_state: string }>(`SELECT version,used_at,recovery_state FROM execution_routes r JOIN confirmation_intents c ON c.route_id=r.route_id WHERE r.route_id=$1`, [routeId]);
       expect(restored.rows).toHaveLength(1);
       expect(restored.rows[0].used_at).not.toBeNull();
+      expect(restored.rows[0].recovery_state).toBe("RECOVERABLE_FROM_VENUS");
       await db.close();
     } finally { await rm(directory, { recursive: true, force: true }); }
   // PGlite creates, closes, and reopens a filesystem-backed cluster here. Under
