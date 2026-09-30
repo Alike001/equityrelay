@@ -132,3 +132,60 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Expose the known action subtotal and a clearly labeled provisional technical cushion; keep the complete gas estimate unavailable. Do not fabricate a deposit gas limit or wallet balance.
 - **Suggested improvement:** Return an indicative gas estimate for a DeFi deposit independently of current balance, or an explicit structured wallet-state error from the gas-limit endpoint.
 - **Evidence:** Live local read-only readiness and preflight checks on 2026-09-29; no transaction submitted.
+
+## Phase 3C read-only infrastructure findings
+
+### 2026-09-30 07:20 WAT — Default public BSC RPC rejected one-block Venus log reads
+
+- **API / surface:** BSC JSON-RPC `eth_getLogs` at `https://bsc-dataseed.bnbchain.org/`.
+- **Attempt:** Query a single latest block, exact live vNVDAB address, and exact Venus `Mint` event topic. Also tried the older three-field event topic for comparison.
+- **Expected:** A bounded array of matching logs, possibly empty.
+- **Actual:** Both one-block requests returned RPC error `-32005: limit exceeded`. Earlier 100- and 1,000-block queries returned the same error. This says nothing about whether a Mint event exists.
+- **Error/code:** `-32005`, `limit exceeded`.
+- **Workaround:** Use a provider that permits exact-address/topic bounded log reads; keep Venus verification `NOT_READY` until a confirmed supply receipt can be checked.
+- **Suggested improvement:** Publish the public endpoint's `eth_getLogs` limits and return a machine-readable maximum range or capability error.
+- **Evidence:** Live read-only RPC calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 07:20 WAT — Alternative public RPC accepts recent logs but restricts archive range
+
+- **API / surface:** BSC JSON-RPC `eth_getLogs` at `https://bsc-rpc.publicnode.com`.
+- **Attempt:** Query the exact vNVDAB market and four-field `Mint` topic in consecutive 1,000-block windows near the chain head.
+- **Expected:** Bounded log results or an explicit provider limitation.
+- **Actual:** Nine recent windows returned empty arrays. The next older window returned an archive-access error. Separate later chain/head reads showed several-second latency, and a longer multi-method smoke attempt timed out at 10 seconds. Empty recent windows are not evidence that no historical supply exists.
+- **Error/code:** `Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode`; one request timed out at the client.
+- **Workaround:** Select a production RPC with documented archive, log-range, timeout and rate-limit capacity; retry idempotent reads only.
+- **Suggested improvement:** Document available archive depth and return a structured earliest accessible block.
+- **Evidence:** Live read-only RPC calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 07:20 WAT — Current Venus Core source uses a four-field Mint event
+
+- **API / surface:** Venus Core `VTokenInterfaces.sol` and `VToken.sol` in the official Venus Protocol repository.
+- **Attempt:** Inspect the current supply/mint event path for the live NVDAB vToken target.
+- **Expected:** Confirm the exact event signature before interpreting receipt logs.
+- **Actual:** The current interface declares `Mint(address minter, uint mintAmount, uint mintTokens, uint256 totalSupply)` and `MintBehalf(address payer, address receiver, uint mintAmount, uint mintTokens, uint256 totalSupply)`. The implementation emits Mint and a vToken Transfer after a successful direct mint. The live target's underlying/symbol had already been read as NVDAB/vNVDAB in Phase 3B, but no historical confirmed NVDAB supply receipt was available through the tested public RPCs.
+- **Error/code:** No Venus API error; the evidence gap is an unverified live implementation/event match.
+- **Workaround:** Decode the four-field event and require matching underlying/vToken transfers in a future confirmed receipt. Keep the live Venus gate `NOT_READY` pending a historical or eventual real confirmed transaction check.
+- **Suggested improvement:** None for the Venus contract; use a capable RPC and verified live ABI for the specific market.
+- **Evidence:** Official Venus Protocol source inspected on 2026-09-30; local pure decoder tests only, no transaction submitted.
+
+### 2026-09-30 07:41 WAT — 1RPC BSC permits bounded logs but caps each request at 50 blocks
+
+- **API / surface:** BSC JSON-RPC at `https://1rpc.io/bnb`.
+- **Attempt:** Read chain, transaction, receipt, block, finalized tag, and exact vNVDAB Mint logs; then probe 10,000-block historical log windows.
+- **Expected:** Determine whether one public endpoint can support all canonical verification reads.
+- **Actual:** The read-only smoke passed chain ID `0x38`, transaction/receipt/block lookup, finalized tag, and a one-block exact-address/topic log query. A 10,000-block log request returned a documented range refusal. The app's default log page size was reduced to 50 blocks. No confirmed vNVDAB Mint event was found in this bounded smoke.
+- **Error/code:** `eth_getLogs is limited to 0 - 50 blocks range`.
+- **Workaround:** Page exact-address/topic reads in at most 50-block windows on this endpoint. A capable archive provider or known receipt remains necessary for historical Venus characterization.
+- **Suggested improvement:** Return the limit as a structured numeric field and document archive retention.
+- **Evidence:** Live read-only RPC calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 07:41 WAT — Live vNVDAB implementation matches the documented Venus Core delegate
+
+- **API / surface:** BSC `eth_call` on the live vNVDAB market, cross-checked with the official Venus Core vToken documentation.
+- **Attempt:** Read `implementation()`, `underlying()`, and `symbol()` from the live market.
+- **Expected:** Establish the current proxy delegate and underlying before choosing a supply-event ABI.
+- **Actual:** The market returned implementation `0xCDfea50f7CECCB24Fe804657DB8E6c93b689941e`, underlying NVDAB, and symbol `vNVDAB`. Official Venus documentation identifies that delegate as the current BNB Core ERC-20 market implementation after VIP-640. This strengthens the event-path hypothesis but does not replace a confirmed NVDAB supply receipt.
+- **Error/code:** None.
+- **Workaround:** Keep the verifier `NOT_READY` until a real historical supply receipt establishes the exact log/position sequence.
+- **Suggested improvement:** None observed.
+- **Evidence:** Live read-only `eth_call` on 2026-09-30 and official Venus Core vToken documentation; no transaction submitted.
