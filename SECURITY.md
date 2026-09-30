@@ -1,4 +1,4 @@
-# EquityRelay execution security review — Phase 3C
+# EquityRelay execution security review — Phase 3C.1
 
 Reviewed 2026-09-30. This phase used read-only RPC calls, a local PostgreSQL rehearsal and non-verified database fixtures. No wallet was funded. No transaction was signed, approved, submitted or broadcast.
 
@@ -17,7 +17,11 @@ Reviewed 2026-09-30. This phase used read-only RPC calls, a local PostgreSQL reh
 
 The production RPC policy is configurable with `BSC_MIN_CONFIRMATIONS` (default 3) and optional `BSC_REQUIRE_FINALIZED`. Read-only calls retry only transient failures. Log reads require a bounded block range, exact contract and topic. The default BSC public RPC returned `-32005: limit exceeded` even for a one-block vNVDAB Mint query. PublicNode accepted recent logs but denied older archive queries and returned HTTP 403 for a recent receipt lookup in one smoke run. `1rpc.io/bnb` passed chain, transaction, receipt, block, finalized-tag and one-block log reads, but caps `eth_getLogs` at 50 blocks per request. No public endpoint has yet been selected as a production service-level provider.
 
-The live vNVDAB market returned underlying NVDAB, symbol `vNVDAB`, and delegate `0xCDfea50f7CECCB24Fe804657DB8E6c93b689941e`. [Official Venus Core documentation](https://github.com/venusprotocol/venus-protocol-documentation/blob/main/technical-reference/reference-core-pool/vtoken.md) identifies that delegate for BNB Core ERC-20 markets. The [official interface](https://github.com/VenusProtocol/venus-protocol/blob/develop/contracts/Tokens/VTokens/VTokenInterfaces.sol) declares a four-field Mint event. A pure evidence decoder checks direct-mint calldata, exact NVDAB movement, that Mint event and matching vToken movement. No historical confirmed vNVDAB supply receipt was obtained from the tested public RPCs, and a resulting position read has not been validated. The live Venus gate remains `VENUS_VERIFICATION_NOT_READY`. Receipt status alone cannot verify a deposit.
+The live vNVDAB market returned underlying NVDAB, symbol `vNVDAB`, and delegate `0xCDfea50f7CECCB24Fe804657DB8E6c93b689941e`. [Official Venus Core documentation](https://github.com/venusprotocol/venus-protocol-documentation/blob/main/technical-reference/reference-core-pool/vtoken.md) identifies that delegate for BNB Core ERC-20 markets. The [official interface](https://github.com/VenusProtocol/venus-protocol/blob/develop/contracts/Tokens/VTokens/VTokenInterfaces.sol) declares four-field `Mint` and `MintBehalf` events.
+
+Historical mainnet transaction `0x5516148304443e2461c673f914d3de4140b8f45ef511df05b311fc68c4c55766` at block `124836339` validates the direct supply path. The verifier requires a successful canonical receipt, the exact live market and underlying, zero native value, decoded `mint(uint256)` semantics, one matching Mint event, one exact NVDAB transfer into the market, one exact vNVDAB transfer to the receiver, and matching before/after `balanceOf` plus `getAccountSnapshot` position evidence. The verified amounts were 1.099946467462607788 NVDAB and 1.09994646 vNVDAB. Negative fixtures fail closed for missing or ambiguous events, identity, sender, amount, receipt, or position mismatches. The Venus evidence gate is now `READY`; current market identity must still be reacquired for each future deposit. This historical transaction is not an EquityRelay execution.
+
+The hard mainnet test-spending cap is $2. Current Binance minimum-order evidence makes the proven 0.05 NVDAon route incompatible with that cap, so funded mainnet execution is not a release requirement. Execution locks remain mandatory.
 
 ## Execution locks
 
@@ -29,7 +33,7 @@ The live vNVDAB market returned underlying NVDAB, symbol `vNVDAB`, and delegate 
 2. Complete real connected-wallet SIWE browser tests at the final HTTPS origin, including account/chain changes, replay, expiry, wrong signer, logout and reload.
 3. Verify trusted edge IP headers and rate limits under production concurrency.
 4. Select a production BSC RPC with reliable transaction, receipt, finalized, exact-log and archive access; test confirmation counting and timeout/rate behavior.
-5. Characterize an actual confirmed vNVDAB supply receipt and position path. Keep the Venus gate closed until its verifier passes real evidence.
+5. Revalidate the live vNVDAB market, underlying and implementation immediately before any future deposit, and retain regression coverage against the historical canonical fixture.
 6. Review lost-hash and abandoned-prompt behavior under possible delayed wallet broadcasts; do not equate zero recent matches with proof of no submission.
 7. Rehearse each enabled action's live balance, allowance, gas, quote freshness, bounded approval and exposure-policy checks; verify restart/two-tab behavior in the deployed runtime.
 8. Obtain a distinct security review and explicit authorization for any later funded mainnet proof. Removing the code lock must be a separate reviewed commit.

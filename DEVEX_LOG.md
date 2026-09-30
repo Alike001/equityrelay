@@ -189,3 +189,36 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Keep the verifier `NOT_READY` until a real historical supply receipt establishes the exact log/position sequence.
 - **Suggested improvement:** None observed.
 - **Evidence:** Live read-only `eth_call` on 2026-09-30 and official Venus Core vToken documentation; no transaction submitted.
+
+### 2026-09-30 08:53 WAT — Bounded historical log discovery required provider-specific paging
+
+- **API / surface:** BSC JSON-RPC `eth_getLogs` at `https://rpc-bnb.blockmachine.io`.
+- **Attempt:** Discover a confirmed vNVDAB supply using the exact market address, exact four-field `Mint` topic, recent ranges first, and bounded pagination.
+- **Expected:** Return exact-topic logs without an unrestricted historical scan.
+- **Actual:** The endpoint accepted ranges of at most 10,000 inclusive blocks and returned matching logs, but repeated discovery requests reached its 60 compute-unit-per-minute limit.
+- **Error/code:** `-32029`, `rate limit exceeded` when the public allowance was exhausted.
+- **Workaround:** Use archive-state binary search to narrow supply-changing blocks, then query a single block with the exact market and event topic. Stop after locating a suitable confirmed example.
+- **Suggested improvement:** Publish machine-readable block-range and compute-unit limits with retry timing in JSON-RPC error data.
+- **Evidence:** Live read-only RPC calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 08:53 WAT — Historical direct NVDAB supply established the canonical verifier path
+
+- **API / surface:** BSC transaction, receipt and archive-state reads for live vNVDAB.
+- **Attempt:** Validate a real confirmed supply beyond receipt status by matching transaction calldata, Venus event, underlying transfer, vToken transfer and resulting account state.
+- **Expected:** One unambiguous direct-mint path whose receipt amounts agree with block-specific position reads.
+- **Actual:** Transaction `0x5516148304443e2461c673f914d3de4140b8f45ef511df05b311fc68c4c55766` at block `124836339` called `mint(uint256)` on vNVDAB. It supplied `1099946467462607788` raw NVDAB, emitted one matching `Mint`, minted `109994646` raw vNVDAB to the supplier, and changed that account's vNVDAB balance from zero to exactly `109994646`. The account snapshot agreed.
+- **Error/code:** None.
+- **Workaround:** Store only the required public chain evidence as a labeled historical mainnet verifier fixture; do not present it as EquityRelay execution.
+- **Suggested improvement:** None for the protocol. Production RPC selection should guarantee bounded logs and historical state reads.
+- **Evidence:** Canonical BSC read-only transaction, receipt, block and `eth_call` evidence on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 08:53 WAT — Mint ABI field name differs from emitted implementation meaning
+
+- **API / surface:** Venus Core `VTokenInterfaces.sol`, `VToken.sol`, and the historical vNVDAB `Mint` log.
+- **Attempt:** Interpret the fourth field of `Mint(address,uint256,uint256,uint256)` and compare it with historical account and global supply state.
+- **Expected:** Determine whether the interface field named `totalSupply` represents market supply or receiver position.
+- **Actual:** `VToken.sol` emits `accountTokensNew` in the fourth slot. The historical log's value was `109994646`, equal to the receiver's post-mint vToken balance, while the market's global total supply was about `149165307689` raw units. Treating the field as global total supply would be incorrect despite the interface parameter name.
+- **Error/code:** No runtime error; this is a source/ABI semantic naming mismatch.
+- **Workaround:** Decode the ABI-compatible field and verify it against the receiver's block-specific `balanceOf` and account snapshot.
+- **Suggested improvement:** Rename the interface event parameter to `accountTokens` or document that it is the receiver's post-mint balance.
+- **Evidence:** Official Venus source plus canonical historical block-state reads on 2026-09-30; no transaction submitted.
