@@ -244,3 +244,14 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Decode both Venus redeem methods, but accept `redeem(uint256)` only when the calldata amount exactly matches the canonical exchange-rate conversion. Never infer the amount from selector alone.
 - **Suggested improvement:** Document that exact-underlying requests may be implemented as a floored vToken `redeem(uint256)` call and return the exchange rate used in the build response.
 - **Evidence:** Live authenticated Binance build/simulation/quote plus canonical BSC `eth_call` on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 17:44 WAT — Managed Neon connection emits an upcoming SSL-mode compatibility warning
+
+- **API / surface:** Neon PostgreSQL through Vercel marketplace, Node `pg` connection parsing.
+- **Attempt:** Apply EquityRelay migrations to the managed production database and run the durable PostgreSQL rehearsal.
+- **Expected:** TLS-protected migration and query execution.
+- **Actual:** All four migrations applied successfully. The current `pg` stack warned that `sslmode=require` is presently treated as `verify-full`, but that this alias behavior changes in the next major `pg-connection-string`/`pg` release.
+- **Error/code:** Warning only; no failed query or migration.
+- **Workaround:** Pin the tested `pg` major and explicitly configure `sslmode=verify-full` when the provider connection format permits it before upgrading.
+- **Suggested improvement:** Managed connection strings should state the certificate-verification behavior explicitly and avoid version-dependent SSL aliases.
+- **Evidence:** Managed production migration run on 2026-09-30; no transaction submitted.
