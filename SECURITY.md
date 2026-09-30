@@ -5,7 +5,7 @@ Reviewed 2026-09-30. This phase used read-only RPC calls, local fixtures, and a 
 ## Production rehearsal result
 
 - Vercel production: `https://equityrelay.vercel.app`, HTTPS origin matched exactly.
-- Managed PostgreSQL: Neon free deployment attached through the Vercel marketplace. All four migrations applied. The production readiness endpoint read the durable migration table after deployment.
+- Managed PostgreSQL: Neon free deployment attached through the Vercel marketplace. All four migrations applied. A labeled non-chain fixture containing a route, step, consumed confirmation intent and non-verified receipt survived a full production redeploy, was checked afterward, and was removed. The production readiness endpoint read the durable migration table after deployment.
 - Production RPC: 1RPC BNB, chain 56, minimum three confirmations, finalized evidence required. The readiness endpoint returned a finalized block and `READY_READ_ONLY`.
 - Authentication infrastructure: production challenge creation persisted successfully and the wallet rate bucket returned `AUTH_RATE_LIMITED` after its configured limit. A real intended-wallet SIWE signature, refresh, account switch, chain switch, logout and replay rehearsal remains BLOCKED pending user interaction.
 - Execution: `POST /api/route/execute` returned HTTP 423 `MAINNET_EXECUTION_NOT_ARMED`. The environment arm remains false and `PHASE3A_BROADCAST_DISABLED` remains compiled into the submission adapter.
@@ -44,7 +44,7 @@ The former $2 planning cap is no longer the active assumption. The minimum teste
 
 ## Required before a separate lock-removal commit
 
-1. Confirm the managed Neon backup/retention policy and use restricted production credentials; repeat the persistence smoke after a production redeploy.
+1. Confirm the managed Neon backup/retention policy and use restricted production credentials for any execution-enabled environment.
 2. Complete real connected-wallet SIWE browser tests at the final HTTPS origin, including account/chain changes, replay, expiry, wrong signer, logout and reload.
 3. Verify trusted edge IP headers and rate limits under production concurrency.
 4. Select a production BSC RPC with reliable transaction, receipt, finalized, exact-log and archive access; test confirmation counting and timeout/rate behavior.
