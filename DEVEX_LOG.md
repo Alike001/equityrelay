@@ -222,3 +222,25 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Decode the ABI-compatible field and verify it against the receiver's block-specific `balanceOf` and account snapshot.
 - **Suggested improvement:** Rename the interface event parameter to `accountTokens` or document that it is the receiver's post-mint balance.
 - **Evidence:** Official Venus source plus canonical historical block-state reads on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 12:21 WAT — First viable tested entry size is 0.022 NVDAon
+
+- **API / surface:** Binance Trading quotes and DeFi deposit transaction builder.
+- **Attempt:** Probe the untested interval above 0.02 NVDAon in ascending order, requiring both swap quotes, the 0.50% exposure policy, live investable Venus discovery, a deposit build, and safe authorization handling.
+- **Expected:** Stop at the first complete route without treating an empty-wallet simulation failure as a route failure.
+- **Actual:** `0.021 NVDAon` returned `40375`. `0.022 NVDAon` produced both quotes, `100.005702338352623...%` NVIDIA-equivalent retention, policy `PASS`, and a ready Venus build. The deposit simulation returned `40484: Insufficient balance`, which is wallet-state dependent. The scanner stopped at 0.022 after correcting an application classification that had treated Binance's omitted, unnecessary approval as unavailable instead of `NOT_REQUIRED`.
+- **Error/code:** `40375: Minimum order amount is 5 USD`; deposit simulation `40484: Insufficient balance. Please check your available funds and try again.`
+- **Workaround:** Treat `NOT_REQUIRED` and exact `BOUNDED_READY` authorization as safe; preserve the wallet-state simulation result separately from route viability.
+- **Suggested improvement:** Return a structured simulation failure category so callers do not need to classify wallet balance failures from message text.
+- **Evidence:** Live authenticated read-only Binance calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 12:21 WAT — Venus exact-amount redeem builds redeem(vTokens), not redeemUnderlying
+
+- **API / surface:** Binance DeFi `/api/v1/defi/transaction/redeem`, live vNVDAB `exchangeRateStored`, and Binance Trading NVDAB → USDT quote.
+- **Attempt:** Build and simulate an exact-amount redeem for the indicative 0.022-route NVDAB output, then quote the redeemed underlying back to USDT.
+- **Expected:** A validated read-only redemption action or an explicit wallet-state/unsupported result.
+- **Actual:** Binance returned one `REDEEM` action, no approval, zero native value, and target vNVDAB. The calldata used `redeem(uint256)` with `2202185` raw vNVDAB rather than `redeemUnderlying(uint256)`. The current canonical exchange rate independently reproduced that exact floored vToken amount. Simulation passed, `redeemDelayDays` was empty, and the fresh NVDAB → USDT quote returned `5.018364764324821207 USDT` for `0.02202185420972685 NVDAB`.
+- **Error/code:** None on the successful observation. One earlier read-only request hit the client's network timeout and succeeded on retry.
+- **Workaround:** Decode both Venus redeem methods, but accept `redeem(uint256)` only when the calldata amount exactly matches the canonical exchange-rate conversion. Never infer the amount from selector alone.
+- **Suggested improvement:** Document that exact-underlying requests may be implemented as a floored vToken `redeem(uint256)` call and return the exchange rate used in the build response.
+- **Evidence:** Live authenticated Binance build/simulation/quote plus canonical BSC `eth_call` on 2026-09-30; no transaction submitted.
