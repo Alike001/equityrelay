@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { authenticateSelectedProvider, logoutEquityRelay, requestBscSwitch, validateSelectedProviderSession } from "@/lib/wallet/auth";
+import { authenticateSelectedProvider, disconnectSelectedProvider, logoutEquityRelay, requestBscSwitch, validateSelectedProviderSession } from "@/lib/wallet/auth";
 import { discoverWalletProviders, providerSelection, providerSelectionKey, readProviderSelection, restoreSelectedProvider,
   type WalletProviderOption } from "@/lib/wallet/providers";
 
@@ -17,10 +17,14 @@ export function WalletAuth() {
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [wrongChain, setWrongChain] = useState(false);
+  const [disconnectGuidance, setDisconnectGuidance] = useState<string | null>(null);
   const restored = useRef(false);
+  const endingSession = useRef(false);
+  const sessionActive = useRef(false);
   const selected = useMemo(() => providers.find(option => option.id === selectedId) ?? null, [providers, selectedId]);
 
   const clearLocalAuth = useCallback((message: string, clearProvider = true) => {
+    sessionActive.current = false;
     setWallet(null);
     setWrongChain(false);
     setPickerOpen(false);
@@ -33,14 +37,17 @@ export function WalletAuth() {
   }, []);
 
   const logout = useCallback(async (message: string, clearProvider = true) => {
+    if (endingSession.current) return;
+    endingSession.current = true;
     try { await logoutEquityRelay(fetch); }
-    finally { clearLocalAuth(message, clearProvider); }
+    finally { clearLocalAuth(message, clearProvider); endingSession.current = false; }
   }, [clearLocalAuth]);
 
   useEffect(() => {
+    let active = true;
     const stop = discoverWalletProviders(window, setProviders);
-    const timer = window.setTimeout(() => setDiscoveryReady(true), 150);
-    return () => { window.clearTimeout(timer); stop(); };
+    queueMicrotask(() => { if (active) setDiscoveryReady(true); });
+    return () => { active = false; stop(); };
   }, []);
 
   useEffect(() => {
@@ -61,13 +68,14 @@ export function WalletAuth() {
         return;
       }
       setWallet(session.wallet);
+      sessionActive.current = true;
       setStatus("Wallet authenticated. Mainnet execution remains disabled.");
     }).catch(() => setStatus("Authentication state is unavailable."));
   }, [discoveryReady, logout, providers]);
 
   useEffect(() => {
     if (!selected) return;
-    const invalidate = () => { void logout("Wallet or chain changed. Authenticate again before review."); };
+    const invalidate = () => { if (sessionActive.current && !endingSession.current) void logout("Wallet or chain changed. Authenticate again before review."); };
     selected.provider.on?.("accountsChanged", invalidate);
     selected.provider.on?.("chainChanged", invalidate);
     return () => {
@@ -80,11 +88,13 @@ export function WalletAuth() {
     setBusy(true);
     setPickerOpen(false);
     setWrongChain(false);
+    setDisconnectGuidance(null);
     setSelectedId(option.id);
     localStorage.setItem(providerSelectionKey, JSON.stringify(providerSelection(option)));
     try {
       const authenticated = await authenticateSelectedProvider(option.provider, fetch);
       setWallet(authenticated);
+      sessionActive.current = true;
       setStatus("Wallet authenticated. Mainnet execution remains disabled.");
       announceAuthChange();
     } catch (error) {
@@ -113,20 +123,45 @@ export function WalletAuth() {
     finally { setBusy(false); }
   }
 
+  async function disconnect() {
+    if (!selected || endingSession.current) return;
+    endingSession.current = true;
+    setBusy(true);
+    setDisconnectGuidance(null);
+    try {
+      const result = await disconnectSelectedProvider(selected.provider, fetch);
+      if (!result.sessionRevoked) {
+        clearLocalAuth("EquityRelay sign-out could not be confirmed. Reload before authenticated review.");
+        setDisconnectGuidance("Wallet access may still be active. Check Connected dApps in your wallet.");
+      } else if (result.permission.walletPermissionState === "REVOKED") {
+        clearLocalAuth("Disconnected. EquityRelay session ended and wallet access disconnected.");
+      } else {
+        clearLocalAuth("Signed out of EquityRelay. Your wallet still remembers this site.");
+        setDisconnectGuidance(selected.name.toLowerCase().includes("binance") ?
+          "Open Binance Wallet → Connected dApps → disconnect equityrelay.vercel.app." :
+          "To remove site access completely, disconnect EquityRelay from Connected dApps in your wallet.");
+      }
+    } finally { endingSession.current = false; setBusy(false); }
+  }
+
   return <section className="wallet-auth" aria-live="polite"><div><span className="eyebrow">CONNECTED WALLET · READ-ONLY REVIEW</span>
-    <h2>{wallet ? short(wallet) : "Your wallet, your confirmation"}</h2><p>{status}</p></div>
+    <h2>{wallet ? selected?.name ?? "Wallet authenticated" : "Your wallet, your confirmation"}</h2>
+    {wallet && <div className="wallet-identity"><strong>{short(wallet)}</strong><span>BNB Smart Chain</span></div>}<p>{status}</p>
+    {disconnectGuidance && <p className="wallet-disconnect-guidance">{disconnectGuidance}</p>}</div>
     <div className="wallet-auth-actions">
       <button type="button" className="secondary-button" onClick={connect} disabled={busy || !discoveryReady}>{busy ? "Checking wallet…" : wallet ? "Reauthenticate" : "Connect wallet"}</button>
       {wrongChain && selected && <button type="button" className="secondary-button" onClick={() => void switchToBsc()} disabled={busy}>Switch network</button>}
-      {wallet && <button type="button" className="wallet-disconnect" onClick={() => void logout("Disconnected from EquityRelay. Your wallet may still remember this site.")} disabled={busy}>Disconnect</button>}
+      {wallet && <button type="button" className="wallet-disconnect" onClick={() => void disconnect()} disabled={busy}>Disconnect</button>}
     </div>
-    {pickerOpen && providers.length > 1 && <div className="wallet-picker" role="dialog" aria-label="Choose an EVM wallet"><strong>Choose wallet</strong>
-      <div>{providers.map(option => <button type="button" key={option.id} onClick={() => void authenticate(option)} disabled={busy}>
+    {pickerOpen && providers.length > 1 && <div className="wallet-picker" role="dialog" aria-modal="false" aria-label="Choose an EVM wallet"
+      tabIndex={-1} onKeyDown={event => { if (event.key === "Escape") setPickerOpen(false); }}>
+      <div className="wallet-picker-heading"><strong>Choose wallet</strong><button type="button" className="wallet-picker-close" autoFocus onClick={() => setPickerOpen(false)} aria-label="Close wallet chooser">Cancel</button></div>
+      <div className="wallet-picker-list">{providers.map(option => <button type="button" key={option.id} onClick={() => void authenticate(option)} disabled={busy}>
         {option.icon && /^(data:image\/|https:\/\/)/.test(option.icon) ?
           // EIP-6963 wallet icons are runtime provider metadata and cannot use a build-time Next image allowlist.
           // eslint-disable-next-line @next/next/no-img-element
           <img src={option.icon} alt="" width="24" height="24" /> : <span className="wallet-icon-fallback" aria-hidden="true">◈</span>}
         <span>{option.name}</span></button>)}</div></div>}
-    <p className="wallet-auth-note">The sign-in message authenticates your address. No transaction, approval, or gas is involved. Disconnect revokes the EquityRelay session; wallet site permission is managed in your extension.</p>
+    <p className="wallet-auth-note">Wallet connection exposes your account to this site. Token spending approval is a separate on-chain transaction. Sign-in uses no gas.</p>
   </section>;
 }

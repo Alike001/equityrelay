@@ -6,21 +6,32 @@ import { providerSelectionKey, type Eip1193Provider } from "@/lib/wallet/provide
 
 const wallet = "0x1111111111111111111111111111111111111111";
 const discoveryListeners: EventListener[] = [];
-function injected(name: string) {
+function injected(name: string, permission: "revoked" | "still" | "unsupported" | "rejected" | "error" = "revoked", emitDuringRevoke = false) {
   const listeners = new Map<string, (...args: unknown[]) => void>();
   const calls: string[] = [];
+  let exposed = true;
   const provider: Eip1193Provider = {
     request: vi.fn(async ({ method }) => {
       calls.push(method);
-      if (method === "eth_requestAccounts" || method === "eth_accounts") return [wallet];
+      if (method === "eth_requestAccounts") { exposed = true; return [wallet]; }
+      if (method === "eth_accounts") return exposed ? [wallet] : [];
       if (method === "eth_chainId") return "0x38";
       if (method === "personal_sign") return `0x${"a".repeat(130)}`;
+      if (method === "wallet_revokePermissions") {
+        if (permission === "unsupported") throw Object.assign(new Error("method not supported"), { code: 4200 });
+        if (permission === "rejected") throw Object.assign(new Error("user rejected"), { code: 4001 });
+        if (permission === "error") throw Object.assign(new Error("provider failed"), { code: -32000 });
+        if (permission === "revoked") exposed = false;
+        if (emitDuringRevoke) listeners.get("accountsChanged")?.(exposed ? [wallet] : []);
+        return null;
+      }
       return null;
     }),
     on: (event, listener) => listeners.set(event, listener),
     removeListener: (event, listener) => { if (listeners.get(event) === listener) listeners.delete(event); },
   };
-  return { name, provider, calls, emit: (event: string, value: unknown) => listeners.get(event)?.(value) };
+  return { name, provider, calls, emit: (event: string, value: unknown) => listeners.get(event)?.(value),
+    hasListener: (event: string) => listeners.has(event) };
 }
 function installEip6963(...wallets: ReturnType<typeof injected>[]) {
   const listener = (() => wallets.forEach((item, index) => window.dispatchEvent(new CustomEvent("eip6963:announceProvider", {
@@ -63,26 +74,55 @@ describe("wallet picker and disconnect", () => {
     expect(binance.calls).toContain("personal_sign");
     expect(metamask.calls).toEqual([]);
   });
-  it("disconnects EquityRelay, clears provider selection, and sends no wallet RPC", async () => {
-    const binance = injected("Binance Wallet");
+  it("disconnects EquityRelay, revokes the selected provider, and reconnects cleanly", async () => {
+    const binance = injected("Binance Wallet", "revoked", true);
     installEip6963(binance);
     render(<WalletAuth />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy());
-    const before = [...binance.calls];
+    const personalSignsBefore = binance.calls.filter(method => method === "personal_sign").length;
     const authChanged = vi.fn();
     window.addEventListener("equityrelay-auth-changed", authChanged);
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull());
     expect(localStorage.getItem(providerSelectionKey)).toBeNull();
-    expect(binance.calls).toEqual(before);
+    expect(binance.calls.slice(-2)).toEqual(["wallet_revokePermissions", "eth_accounts"]);
+    expect(binance.calls).not.toContain("eth_sendTransaction");
+    expect(binance.calls.filter(method => method === "personal_sign")).toHaveLength(personalSignsBefore);
     expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/auth/logout", expect.objectContaining({ method: "POST" }));
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/logout"))).toHaveLength(1);
     expect(authChanged).toHaveBeenCalled();
+    expect(screen.getByText("Disconnected. EquityRelay session ended and wallet access disconnected.")).toBeTruthy();
     window.removeEventListener("equityrelay-auth-changed", authChanged);
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy());
     expect(binance.calls.filter(method => method === "personal_sign")).toHaveLength(2);
+  });
+  it("still logs out and guides the user when revocation is unsupported", async () => {
+    const binance = injected("Binance Wallet", "unsupported"), metamask = injected("MetaMask");
+    installEip6963(binance, metamask);
+    render(<WalletAuth />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Binance Wallet" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(screen.getByText("Signed out of EquityRelay. Your wallet still remembers this site.")).toBeTruthy());
+    expect(screen.getByText(/Open Binance Wallet → Connected dApps/)).toBeTruthy();
+    expect(binance.calls).toContain("wallet_revokePermissions");
+    expect(metamask.calls).toEqual([]);
+  });
+  it("does not claim revocation when the selected provider still exposes the account", async () => {
+    const walletProvider = injected("Other Wallet", "still");
+    installEip6963(walletProvider);
+    render(<WalletAuth />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(screen.getByText("Signed out of EquityRelay. Your wallet still remembers this site.")).toBeTruthy());
+    expect(screen.getByText(/To remove site access completely/)).toBeTruthy();
   });
   it("account and chain changes revoke the server session", async () => {
     const binance = injected("Binance Wallet");
@@ -104,9 +144,23 @@ describe("wallet picker and disconnect", () => {
     await waitFor(() => expect(screen.getByText(shortWallet())).toBeTruthy());
     expect(binance.calls).toEqual(["eth_accounts", "eth_chainId"]);
     expect(metamask.calls).toEqual([]);
+    await waitFor(() => expect(binance.hasListener("chainChanged")).toBe(true));
     binance.emit("chainChanged", "0x1");
     await waitFor(() => expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull());
     expect(localStorage.getItem(providerSelectionKey)).toBeNull();
+  });
+  it("bounds a five-wallet picker and lets keyboard users cancel without authenticating", async () => {
+    const wallets = Array.from({ length: 5 }, (_, index) => injected(`Wallet ${index + 1}`));
+    installEip6963(...wallets);
+    render(<WalletAuth />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    const dialog = screen.getByRole("dialog", { name: "Choose an EVM wallet" });
+    expect(dialog.querySelector(".wallet-picker-list")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Wallet \d/ })).toHaveLength(5);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Choose an EVM wallet" })).toBeNull();
+    expect(wallets.every(item => item.calls.length === 0)).toBe(true);
   });
 });
 

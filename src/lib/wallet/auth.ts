@@ -3,6 +3,12 @@ import type { Eip1193Provider } from "./providers";
 
 export const bscChainHex = "0x38";
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type WalletPermissionState = "REVOKED" | "STILL_CONNECTED" | "UNKNOWN";
+export type PermissionRevocationOutcome = "SUPPORTED_AND_REVOKED" | "REQUEST_ACCEPTED_NOT_REVOKED" |
+  "METHOD_UNSUPPORTED" | "USER_REJECTED" | "PROVIDER_ERROR";
+export type DisconnectResult = { sessionRevoked: boolean; permission: {
+  outcome: PermissionRevocationOutcome; walletPermissionState: WalletPermissionState;
+} };
 
 export async function authenticateSelectedProvider(provider: Eip1193Provider, fetcher: Fetcher): Promise<string> {
   const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
@@ -41,5 +47,40 @@ export async function requestBscSwitch(provider: Eip1193Provider): Promise<void>
 }
 
 export async function logoutEquityRelay(fetcher: Fetcher): Promise<void> {
-  await fetcher("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const response = await fetcher("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!response.ok) throw new Error("EQUITYRELAY_LOGOUT_UNAVAILABLE");
+}
+
+function providerError(error: unknown): { code?: number | string; message: string } {
+  if (!error || typeof error !== "object") return { message: String(error) };
+  const candidate = error as { code?: unknown; message?: unknown };
+  return { ...(typeof candidate.code === "number" || typeof candidate.code === "string" ? { code: candidate.code } : {}),
+    message: typeof candidate.message === "string" ? candidate.message : "" };
+}
+
+export async function revokeSelectedProviderPermission(provider: Eip1193Provider): Promise<DisconnectResult["permission"]> {
+  try {
+    await provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+  } catch (error) {
+    const { code, message } = providerError(error);
+    if (code === 4001 || code === "4001" || /user (?:rejected|denied)|request rejected|cancelled/i.test(message))
+      return { outcome: "USER_REJECTED", walletPermissionState: "UNKNOWN" };
+    if (code === 4200 || code === "4200" || code === -32601 || code === "-32601" || /method (?:not found|not supported)|unsupported method/i.test(message))
+      return { outcome: "METHOD_UNSUPPORTED", walletPermissionState: "UNKNOWN" };
+    return { outcome: "PROVIDER_ERROR", walletPermissionState: "UNKNOWN" };
+  }
+  try {
+    const accounts = await provider.request({ method: "eth_accounts" });
+    if (!Array.isArray(accounts)) return { outcome: "PROVIDER_ERROR", walletPermissionState: "UNKNOWN" };
+    return accounts.length === 0 ? { outcome: "SUPPORTED_AND_REVOKED", walletPermissionState: "REVOKED" } :
+      { outcome: "REQUEST_ACCEPTED_NOT_REVOKED", walletPermissionState: "STILL_CONNECTED" };
+  } catch { return { outcome: "PROVIDER_ERROR", walletPermissionState: "UNKNOWN" }; }
+}
+
+export async function disconnectSelectedProvider(provider: Eip1193Provider, fetcher: Fetcher): Promise<DisconnectResult> {
+  let sessionRevoked = false;
+  try { await logoutEquityRelay(fetcher); sessionRevoked = true; }
+  catch { sessionRevoked = false; }
+  const permission = await revokeSelectedProviderPermission(provider);
+  return { sessionRevoked, permission };
 }
