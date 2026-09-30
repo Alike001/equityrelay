@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "migrate:validate": "node scripts/validate-migrations.mjs"
+    "migrate:validate": "node scripts/validate-migrations.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "rpc:check": "node scripts/check-bsc-rpc.mjs"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

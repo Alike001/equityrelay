@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
-const migrations = ["001_execution.sql", "002_reservation_time.sql"].map(file => join(process.cwd(), "db/migrations", file));
+const migrations = ["001_execution.sql", "002_reservation_time.sql", "003_auth_rate_limit.sql"].map(file => join(process.cwd(), "db/migrations", file));
 const routeId = "11111111-1111-4111-8111-111111111111";
 const wallet = "0x1111111111111111111111111111111111111111";
 describe("PostgreSQL durable schema", () => {

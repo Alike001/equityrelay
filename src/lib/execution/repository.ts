@@ -8,6 +8,8 @@ import { recordConfirmation } from "@/domain/execution/lifecycle";
 import { requireActionReadiness, requireCurrentQuote } from "@/lib/execution/readiness";
 import { executionPool, transaction } from "@/lib/db/pool";
 import type { ExecutionSession } from "@/types/execution";
+import { findReservedTransaction } from "./lost-hash";
+import { mainnetExecutionArmed } from "@/domain/execution/guard";
 
 export type StoredRoute = { session: ExecutionSession; version: number; state: string; wallet: string };
 export type StoredStep = { id: string; stage: ExecutionActionV1["stage"]; status: string; action: ExecutionActionV1; actionHash: string; txHash: string | null };
@@ -51,6 +53,29 @@ export async function createExecutionStep(routeId: string, wallet: string, versi
       metadata.quote ? JSON.stringify(metadata.quote) : null, metadata.authorization ? JSON.stringify(metadata.authorization) : null, metadata.gas ? JSON.stringify(metadata.gas) : null]);
     await client.query("DELETE FROM confirmation_intents WHERE route_id=$1 AND stage=$2 AND used_at IS NULL", [routeId, action.stage]);
     await client.query("UPDATE execution_routes SET version=version+1,updated_at=now() WHERE route_id=$1", [routeId]);
+    return { id, stage: action.stage, status: "REVIEW_READY", action: currentAction, actionHash, txHash: null };
+  });
+}
+
+export async function persistPreparedReview(routeId: string, wallet: string, expectedVersion: number, session: ExecutionSession,
+  action: ExecutionActionV1, metadata: { quote?: unknown; authorization?: unknown; gas?: unknown } = {}): Promise<StoredStep> {
+  if (session.id !== routeId || action.routeId !== routeId || !sameAddress(session.owner, wallet) || !sameAddress(action.from, wallet))
+    throw new Error("ROUTE_WALLET_MISMATCH");
+  return transaction(async client => {
+    const route = await client.query("SELECT version FROM execution_routes WHERE route_id=$1 AND wallet=$2 FOR UPDATE", [routeId, wallet.toLowerCase()]);
+    if (route.rowCount !== 1 || Number(route.rows[0].version) !== expectedVersion) throw new Error("ROUTE_VERSION_CONFLICT");
+    const confirmed = await client.query("SELECT stage FROM execution_steps WHERE route_id=$1 AND status='CONFIRMED'", [routeId]);
+    requireStepOrder(session, action, new Set(confirmed.rows.map(row => String(row.stage))));
+    const previous = await client.query("SELECT COALESCE(MAX(attempt),0)+1 AS next FROM execution_steps WHERE route_id=$1 AND stage=$2", [routeId, action.stage]);
+    const id = randomUUID(), currentAction = { ...action, planRevision: randomUUID() };
+    const actionHash = executionActionHash(currentAction);
+    await client.query("UPDATE execution_steps SET status='SUPERSEDED',updated_at=now() WHERE route_id=$1 AND stage=$2 AND status='REVIEW_READY'", [routeId, action.stage]);
+    await client.query(`INSERT INTO execution_steps(step_id,route_id,stage,action_kind,action_hash,action_v1,status,attempt,quote_metadata,bounded_authorization,recommended_gas)
+      VALUES($1,$2,$3,$4,$5,$6,'REVIEW_READY',$7,$8,$9,$10)`, [id, routeId, action.stage, action.kind, actionHash, JSON.stringify(currentAction), previous.rows[0].next,
+      metadata.quote ? JSON.stringify(metadata.quote) : null, metadata.authorization ? JSON.stringify(metadata.authorization) : null, metadata.gas ? JSON.stringify(metadata.gas) : null]);
+    await client.query("DELETE FROM confirmation_intents WHERE route_id=$1 AND used_at IS NULL", [routeId]);
+    await client.query(`UPDATE execution_routes SET session_snapshot=$3,lifecycle_state=$4,version=version+1,updated_at=now()
+      WHERE route_id=$1 AND wallet=$2`, [routeId, wallet.toLowerCase(), JSON.stringify(session), session.stage]);
     return { id, stage: action.stage, status: "REVIEW_READY", action: currentAction, actionHash, txHash: null };
   });
 }
@@ -107,14 +132,20 @@ export async function reserveConfirmation(input: { routeId: string; wallet: stri
   });
 }
 export async function abandonReservation(routeId: string, wallet: string, stage: ExecutionActionV1["stage"], reason: "USER_REJECTED" | "WALLET_PROMPT_EXPIRED" | "RESERVATION_EXPIRED"): Promise<void> {
-  // Internal-only Phase 3B primitive. Do not expose a browser rejection claim as proof
-  // of no broadcast; lost-hash recovery needs a separate chain/provider review.
+  // A browser rejection claim is insufficient: wait for expiry and scan canonical
+  // blocks for the reserved action. This automatic recovery is rehearsal-only;
+  // armed execution requires a separate manual/no-broadcast proof review.
+  if (mainnetExecutionArmed()) throw new Error("RESERVATION_REQUIRES_MANUAL_REVIEW");
+  const pending = await executionPool().query("SELECT step_id FROM execution_steps WHERE route_id=$1 AND stage=$2 AND status='AWAITING_WALLET_TX' AND tx_hash IS NULL", [routeId,stage]);
+  if (pending.rowCount !== 1) throw new Error("RESERVATION_NOT_ABANDONABLE");
+  const recovery = await findReservedTransaction(routeId, wallet, String(pending.rows[0].step_id));
+  if (recovery.status !== "UNRESOLVED" || recovery.reason !== "NO_MATCH") throw new Error("RESERVATION_REQUIRES_MANUAL_REVIEW");
   await transaction(async client => {
     const route = await client.query("SELECT version,session_snapshot FROM execution_routes WHERE route_id=$1 AND wallet=$2 FOR UPDATE", [routeId,wallet.toLowerCase()]);
     if (route.rowCount !== 1) throw new Error("ROUTE_NOT_FOUND");
     const changed = await client.query(`UPDATE execution_steps SET status=$3,failure_reason=$3,updated_at=now()
-      WHERE route_id=$1 AND stage=$2 AND status='AWAITING_WALLET_TX' AND tx_hash IS NULL
-      AND ($3='USER_REJECTED' OR reserved_at < now() - interval '2 minutes') RETURNING step_id`, [routeId,stage,reason]);
+      WHERE route_id=$1 AND stage=$2 AND step_id=$4 AND status='AWAITING_WALLET_TX' AND tx_hash IS NULL
+      AND reserved_at < now() - interval '2 minutes' RETURNING step_id`, [routeId,stage,reason,pending.rows[0].step_id]);
     if (changed.rowCount !== 1) throw new Error("RESERVATION_NOT_ABANDONABLE");
     const boundary = stage.startsWith("LEG1") ? "LEAVE_ONDO" : stage.startsWith("LEG2") ? "CHANGE_REPRESENTATION" : "SUPPLY_TO_VENUS";
     const confirmed = await client.query("SELECT 1 FROM execution_steps WHERE route_id=$1 AND stage LIKE $2 AND status='CONFIRMED' LIMIT 1", [routeId, stage.startsWith("LEG1") ? "LEG1_%" : stage.startsWith("LEG2") ? "LEG2_%" : "VENUS_%"]);

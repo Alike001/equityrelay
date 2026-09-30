@@ -192,3 +192,9 @@ a { color: inherit; }
 .safety-summary { margin-top: 18px; background: #edf3ea; border-radius: 9px; padding: 22px; }.safety-summary h3 { font: 500 28px Georgia, serif; letter-spacing: -.045em; margin: 8px 0; }.safety-summary ul { margin: 13px 0; padding-left: 19px; }.safety-summary li { margin-bottom: 9px; font-size: 13px; line-height: 1.5; }.safety-summary p { color: #536958; border-top: 1px solid #cedecd; margin: 15px 0 0; padding-top: 13px; font-size: 12px; line-height: 1.5; }.preflight-finish { text-align: center; font-size: 11px; font-weight: 850; letter-spacing: .1em; color: #52745b; padding-top: 25px; }.preflight-finish span { padding-inline: 5px; }.preflight-review.refusal strong { color: #9b403a; font-size: 13px; }
 @media (max-width: 700px) { .preflight-review-head { flex-direction: column; }.preflight-summary { grid-template-columns: 1fr; }.preflight-summary small { min-height: 0; }.preflight-stage-head { flex-wrap: wrap; }.build-tag { margin-left: 48px; }.transaction-details dl { grid-template-columns: 1fr; } }
 @media (max-width: 580px) { .preflight-review, .preflight-loading { padding: 22px; }.preflight-actions, .simulation-line, .stage-reason, .stage-no-actions, .stage-preview-details, .simulation-evidence { margin-left: 0; }.preflight-action-head { flex-wrap: wrap; }.preflight-finish { line-height: 1.5; } }
+
+.proof-evidence-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 35px; }
+.proof-evidence-columns section { padding: 24px; border: 1px solid #d9e2d6; border-radius: 10px; background: #fff; }
+.proof-evidence-columns h2 { margin: 0 0 15px; font-size: 20px; letter-spacing: -.04em; }
+.proof-evidence-columns p { margin: 6px 0; color: #53695b; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) { .proof-evidence-columns { grid-template-columns: 1fr; } }

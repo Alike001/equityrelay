@@ -4,7 +4,7 @@ import { NVDAON_ADDRESS, USDT_ADDRESS } from "@/domain/routing/identity";
 import type { ExecutionActionV1 } from "@/domain/execution/action";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/execution/rpc", () => ({ bscPublicClient: vi.fn() }));
+vi.mock("@/lib/execution/rpc", () => ({ bscPublicClient: vi.fn(), readBscWithRetry: (read: () => Promise<unknown>) => read() }));
 import { bscPublicClient } from "@/lib/execution/rpc";
 import { decodeTransfers, exactSettlementFromTransfers, finalityPolicy, hasExactApprovalLog, observeCanonicalTransaction } from "./canonical";
 

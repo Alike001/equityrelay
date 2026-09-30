@@ -2,7 +2,7 @@ import "server-only";
 import { decodeEventLog, erc20Abi, TransactionNotFoundError, TransactionReceiptNotFoundError, type Hex } from "viem";
 import { matchTransactionSemantics, type ExecutionActionV1 } from "@/domain/execution/action";
 import { sameAddress } from "@/domain/routing/identity";
-import { bscPublicClient } from "@/lib/execution/rpc";
+import { bscPublicClient, readBscWithRetry } from "@/lib/execution/rpc";
 import type { Address } from "@/types/route";
 
 export type CanonicalObservation =
@@ -56,28 +56,28 @@ export function hasExactApprovalLog(logs: Array<{ address: Address; data: Hex; t
 export async function observeCanonicalTransaction(hash: Hex, action: ExecutionActionV1): Promise<CanonicalObservation> {
   if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) throw new Error("INVALID_TRANSACTION_HASH");
   const client = bscPublicClient();
-  if (await client.getChainId() !== 56) throw new Error("WRONG_RPC_CHAIN");
+  if (await readBscWithRetry(() => client.getChainId()) !== 56) throw new Error("WRONG_RPC_CHAIN");
   let tx;
-  try { tx = await client.getTransaction({ hash }); }
+  try { tx = await readBscWithRetry(() => client.getTransaction({ hash })); }
   catch (error) { if (error instanceof TransactionNotFoundError) return { status: "PENDING", reason: "TRANSACTION_NOT_FOUND" }; throw error; }
   try { matchTransactionSemantics(action, { from: tx.from, to: tx.to, input: tx.input, value: tx.value, chainId: tx.chainId ?? -1 }); }
   catch { return { status: "FAILED", reason: "CANONICAL_ACTION_MISMATCH" }; }
   let receipt;
-  try { receipt = await client.getTransactionReceipt({ hash }); }
+  try { receipt = await readBscWithRetry(() => client.getTransactionReceipt({ hash })); }
   catch (error) { if (error instanceof TransactionReceiptNotFoundError) return { status: "PENDING", reason: "RECEIPT_NOT_FOUND" }; throw error; }
   if (receipt.status !== "success") return { status: "FAILED", reason: "RECEIPT_REVERTED" };
   if (tx.blockHash !== receipt.blockHash || tx.blockNumber !== receipt.blockNumber ||
       !sameAddress(receipt.from, action.from) || !sameAddress(receipt.to ?? "", action.to))
     return { status: "FAILED", reason: "BLOCK_IDENTITY_MISMATCH" };
-  const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+  const block = await readBscWithRetry(() => client.getBlock({ blockNumber: receipt.blockNumber }));
   if (block.hash !== receipt.blockHash) return { status: "FAILED", reason: "BLOCK_IDENTITY_MISMATCH" };
-  const head = await client.getBlockNumber();
+  const head = await readBscWithRetry(() => client.getBlockNumber());
   const confirmations = head - receipt.blockNumber + 1n;
   const policy = finalityPolicy();
   if (confirmations < policy.minConfirmations) return { status: "PENDING", reason: "CONFIRMATIONS_PENDING" };
   if (policy.requireFinalized) {
     try {
-      const finalized = await client.getBlock({ blockTag: "finalized" });
+      const finalized = await readBscWithRetry(() => client.getBlock({ blockTag: "finalized" }));
       if (finalized.number < receipt.blockNumber) return { status: "PENDING", reason: "FINALITY_PENDING" };
     } catch { return { status: "PENDING", reason: "FINALITY_PENDING" }; }
   }

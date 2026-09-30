@@ -29,9 +29,10 @@ describe("ordered actions inside three financial boundaries", () => {
     expect(() => requireStepOrder({ ...session, reviews: { ...session.reviews, CHANGE_REPRESENTATION: { allowanceSufficient: true } } } as unknown as ExecutionSession, action, new Set())).toThrow("FRESH_SETTLED_LEG2_REQUIRED");
     const next = { ...session, stage: "LEG2_REVIEW", policyRecheck: "PASS", leg1Settlement: { actualAmountOutRaw: "11000000" },
       freshLeg2: { quoteId: "fresh-quote" }, reviews: { ...session.reviews, CHANGE_REPRESENTATION: { allowanceSufficient: true } } } as unknown as ExecutionSession;
-    expect(() => requireStepOrder(next, action, new Set())).not.toThrow();
-    expect(() => requireStepOrder(next, { ...action, amountInRaw: "10900000" }, new Set())).toThrow("INDICATIVE_AMOUNT_FORBIDDEN");
-    expect(() => requireStepOrder(next, { ...action, planIdentity: "old-quote" }, new Set())).toThrow("FRESH_QUOTE_REQUIRED");
+    expect(() => requireStepOrder(next, action, new Set())).toThrow("CONFIRMED_LEG1_STEP_REQUIRED");
+    expect(() => requireStepOrder(next, action, new Set(["LEG1_SWAP"]))).not.toThrow();
+    expect(() => requireStepOrder(next, { ...action, amountInRaw: "10900000" }, new Set(["LEG1_SWAP"]))).toThrow("INDICATIVE_AMOUNT_FORBIDDEN");
+    expect(() => requireStepOrder(next, { ...action, planIdentity: "old-quote" }, new Set(["LEG1_SWAP"]))).toThrow("FRESH_QUOTE_REQUIRED");
   });
   it("requires settled NVDAB and rediscovered investable Venus", () => {
     const action = { ...base, stage: "VENUS_DEPOSIT" as const, kind: "DEPOSIT" as const, tokenIn: NVDAB_ADDRESS,
@@ -40,8 +41,9 @@ describe("ordered actions inside three financial boundaries", () => {
     const next = { ...session, stage: "VENUS_REVIEW", leg2Settlement: { actualAmountOutRaw: "49900000000000000" },
       venus: { investable: true, investmentId: "fresh-investment" },
       reviews: { ...session.reviews, SUPPLY_TO_VENUS: { allowanceSufficient: true } } } as unknown as ExecutionSession;
-    expect(() => requireStepOrder(next, action, new Set())).not.toThrow();
-    expect(() => requireStepOrder(next, { ...action, amountInRaw: "50000000000000000" }, new Set())).toThrow("INDICATIVE_AMOUNT_FORBIDDEN");
-    expect(() => requireStepOrder(next, { ...action, planIdentity: "old-investment" }, new Set())).toThrow("VENUS_REDISCOVERY_REQUIRED");
+    expect(() => requireStepOrder(next, action, new Set())).toThrow("CONFIRMED_LEG2_STEP_REQUIRED");
+    expect(() => requireStepOrder(next, action, new Set(["LEG2_SWAP"]))).not.toThrow();
+    expect(() => requireStepOrder(next, { ...action, amountInRaw: "50000000000000000" }, new Set(["LEG2_SWAP"]))).toThrow("INDICATIVE_AMOUNT_FORBIDDEN");
+    expect(() => requireStepOrder(next, { ...action, planIdentity: "old-investment" }, new Set(["LEG2_SWAP"]))).toThrow("VENUS_REDISCOVERY_REQUIRED");
   });
 });

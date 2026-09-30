@@ -5,6 +5,7 @@ import { isAddress, sameAddress } from "@/domain/routing/identity";
 import { hashSecret, randomSecret } from "@/domain/execution/confirmation";
 import { executionPool, transaction } from "@/lib/db/pool";
 import { bscPublicClient } from "@/lib/execution/rpc";
+import { consumeChallengeRate } from "@/lib/auth/rate-limit";
 
 const challengeSeconds = 300;
 const sessionSeconds = 8 * 60 * 60;
@@ -23,7 +24,7 @@ export function requireSameOrigin(request: Request): void {
   if (!origin || origin !== configuredOrigin().origin) throw new Error("ORIGIN_MISMATCH");
   if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") throw new Error("CONTENT_TYPE_REQUIRED");
 }
-export async function createChallenge(wallet: string): Promise<{ message: string; expiresAt: string }> {
+export async function createChallenge(wallet: string, rateKeys: Array<{ key: string; limit: number }> = [{ key: `wallet:${wallet.toLowerCase()}`, limit: 5 }]): Promise<{ message: string; expiresAt: string }> {
   if (!isAddress(wallet)) throw new Error("INVALID_WALLET_CLAIM");
   const origin = configuredOrigin();
   const nonce = randomBytes(16).toString("hex");
@@ -32,10 +33,13 @@ export async function createChallenge(wallet: string): Promise<{ message: string
   const message = createSiweMessage({ address: wallet, chainId: 56, domain: origin.host,
     uri: origin.origin, version: "1", nonce, issuedAt, expirationTime,
     statement: "Sign in to EquityRelay for read-only route review." });
-  await executionPool().query(`INSERT INTO auth_challenges
-    (nonce_hash,wallet,chain_id,domain,uri,message,issued_at,expires_at)
-    VALUES ($1,$2,56,$3,$4,$5,$6,$7)`,
-    [hashSecret(nonce), wallet.toLowerCase(), origin.host, origin.origin, message, issuedAt, expirationTime]);
+  await transaction(async client => {
+    await consumeChallengeRate(client, rateKeys);
+    await client.query(`INSERT INTO auth_challenges
+      (nonce_hash,wallet,chain_id,domain,uri,message,issued_at,expires_at)
+      VALUES ($1,$2,56,$3,$4,$5,$6,$7)`,
+      [hashSecret(nonce), wallet.toLowerCase(), origin.host, origin.origin, message, issuedAt, expirationTime]);
+  });
   return { message, expiresAt: expirationTime.toISOString() };
 }
 export async function verifyChallenge(message: string, signature: `0x${string}`): Promise<{ wallet: string; sessionToken: string; expiresAt: Date }> {

@@ -13,6 +13,8 @@ export function requireStepOrder(session: ExecutionSession, action: ExecutionAct
       !["LEG2_REVIEW", "LEG2_APPROVAL_CONFIRMED"].includes(session.stage))) throw new Error("FRESH_SETTLED_LEG2_REQUIRED");
   if (!leg1 && !leg2 && (!session.leg2Settlement || !session.venus?.investable ||
       !["VENUS_REVIEW", "VENUS_APPROVAL_CONFIRMED"].includes(session.stage))) throw new Error("SETTLED_VENUS_REVIEW_REQUIRED");
+  if (leg2 && !confirmedStages.has("LEG1_SWAP")) throw new Error("CONFIRMED_LEG1_STEP_REQUIRED");
+  if (!leg1 && !leg2 && !confirmedStages.has("LEG2_SWAP")) throw new Error("CONFIRMED_LEG2_STEP_REQUIRED");
   const expectedRaw = leg1 ? session.originalSourceRaw : leg2 ? session.leg1Settlement!.actualAmountOutRaw : session.leg2Settlement!.actualAmountOutRaw;
   if (action.amountInRaw !== expectedRaw) throw new Error("INDICATIVE_AMOUNT_FORBIDDEN");
   if (leg2 && action.kind === "SWAP" && action.planIdentity !== session.freshLeg2!.quoteId) throw new Error("FRESH_QUOTE_REQUIRED");

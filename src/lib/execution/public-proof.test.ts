@@ -16,8 +16,12 @@ describe("public durable route status", () => {
   });
   it("reads pending, failed and partial stop from durable state, never from browser data", async () => {
     for (const [lifecycle_state, expected] of [["LEG1_SWAP_PENDING", "PENDING"], ["FAILED", "FAILED"], ["PARTIAL_ROUTE_STOPPED", "PARTIAL_ROUTE_STOPPED"]]) {
-      mocks.query.mockResolvedValueOnce({ rows: [{ lifecycle_state, status: null, payload_v1: null, receipt_hash: null }] });
-      expect(await readPublicProof(id)).toEqual({ routeId: id, status: expected });
+      mocks.query.mockResolvedValueOnce({ rows: [{ lifecycle_state, status: null, payload_v1: null, receipt_hash: null,
+        session_snapshot: { initialQuote: { outputRaw: "11000000000000000000", outputDecimals: 18 },
+          initialLeg2Indicative: { outputRaw: "50000000000000000", outputDecimals: 18 } } }] });
+      mocks.query.mockResolvedValueOnce({ rows: lifecycle_state === "PARTIAL_ROUTE_STOPPED" ? [{ stage: "LEG1_SWAP", amount_out_raw: "10900000000000000000" }] : [] });
+      expect(await readPublicProof(id)).toMatchObject({ routeId: id, status: expected,
+        quoted: { usdt: "11", nvdab: "0.05" }, actual: { usdt: lifecycle_state === "PARTIAL_ROUTE_STOPPED" ? "10.9" : null, nvdab: null } });
     }
     mocks.query.mockResolvedValueOnce({ rows: [{ lifecycle_state: "VERIFIED_RECEIPT", status: "VERIFIED", payload_v1: { status: "VERIFIED" }, receipt_hash: "0xfake" }] });
     expect(await readPublicProof(id)).toEqual({ status: "UNAVAILABLE" });

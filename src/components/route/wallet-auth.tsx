@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { connectedWalletMatchesSession } from "@/domain/execution/wallet-binding";
 
 type InjectedProvider = {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -17,13 +18,6 @@ export function WalletAuth() {
   const [status, setStatus] = useState("Connect your BSC wallet for authenticated execution review.");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    void fetch("/api/auth/session", { cache: "no-store" }).then(async response => {
-      if (response.ok) {
-        const session = await response.json() as { wallet: string | null };
-        setWallet(session.wallet);
-        if (session.wallet) setStatus("Wallet authenticated. Mainnet execution remains disabled.");
-      }
-    }).catch(() => setStatus("Authentication state is unavailable."));
     const injected = provider();
     const invalidate = () => {
       setWallet(null);
@@ -31,6 +25,18 @@ export function WalletAuth() {
       window.dispatchEvent(new Event("equityrelay-auth-changed"));
       void fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     };
+    void fetch("/api/auth/session", { cache: "no-store" }).then(async response => {
+      if (!response.ok) throw new Error("SESSION_UNAVAILABLE");
+      const session = await response.json() as { wallet: string | null };
+      if (!session.wallet) return;
+      const [accounts, chain] = await Promise.all([
+        injected?.request({ method: "eth_accounts" }) ?? Promise.resolve([]),
+        injected?.request({ method: "eth_chainId" }) ?? Promise.resolve(null),
+      ]);
+      if (!connectedWalletMatchesSession(session.wallet, accounts, chain)) { invalidate(); return; }
+      setWallet(session.wallet);
+      setStatus("Wallet authenticated. Mainnet execution remains disabled.");
+    }).catch(() => setStatus("Authentication state is unavailable."));
     injected?.on?.("accountsChanged", invalidate);
     injected?.on?.("chainChanged", invalidate);
     return () => { injected?.removeListener?.("accountsChanged", invalidate); injected?.removeListener?.("chainChanged", invalidate); };
@@ -52,6 +58,13 @@ export function WalletAuth() {
         body: JSON.stringify({ message: challenge.message, signature }) });
       if (!response.ok) throw new Error("Wallet authentication failed or the challenge expired.");
       const session = await response.json() as { wallet: string };
+      const [currentAccounts, currentChain] = await Promise.all([
+        injected.request({ method: "eth_accounts" }), injected.request({ method: "eth_chainId" }),
+      ]);
+      if (!connectedWalletMatchesSession(session.wallet, currentAccounts, currentChain)) {
+        await fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        throw new Error("Wallet or chain changed during authentication. Please try again.");
+      }
       setWallet(session.wallet);
       setStatus("Wallet authenticated. Mainnet execution remains disabled.");
       window.dispatchEvent(new Event("equityrelay-auth-changed"));

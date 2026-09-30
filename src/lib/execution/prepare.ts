@@ -13,7 +13,13 @@ import { buildVenusDeposit } from "@/lib/binance/defi-transaction";
 
 export async function prepareLeg2AfterConfirmedLeg1(session: ExecutionSession, receipt: ConfirmedTransaction) {
   const settlement = deriveSettlement(receipt, session.owner, session.originalSource.address, USDT_ADDRESS);
-  let next = measureSettlement(session, "LEG1", settlement);
+  return prepareLeg2FromMeasured(measureSettlement(session, "LEG1", settlement));
+}
+
+export async function prepareLeg2FromMeasured(session: ExecutionSession) {
+  if (session.stage !== "ACTUAL_USDT_MEASURED" || !session.leg1Settlement) throw new Error("ACTUAL_USDT_REQUIRED");
+  const settlement = session.leg1Settlement;
+  let next = session;
   const { target } = await discoverRepresentations();
   const quote = await requestQuote(2, USDT_ADDRESS, target.address, settlement.actualAmountOutRaw, session.owner);
   if (!quote) throw new Error("FRESH_LEG2_QUOTE_UNAVAILABLE");
@@ -33,7 +39,13 @@ export async function prepareLeg2AfterConfirmedLeg1(session: ExecutionSession, r
 export async function prepareVenusAfterConfirmedLeg2(session: ExecutionSession, receipt: ConfirmedTransaction) {
   if (!session.freshTarget) throw new Error("FRESH_TARGET_REQUIRED");
   const settlement = deriveSettlement(receipt, session.owner, USDT_ADDRESS, session.freshTarget.address);
-  let next = measureSettlement(session, "LEG2", settlement);
+  return prepareVenusFromMeasured(measureSettlement(session, "LEG2", settlement));
+}
+
+export async function prepareVenusFromMeasured(session: ExecutionSession) {
+  if (session.stage !== "ACTUAL_NVDAB_MEASURED" || !session.leg2Settlement || !session.freshTarget) throw new Error("ACTUAL_NVDAB_REQUIRED");
+  const settlement = session.leg2Settlement;
+  let next = session;
   const destination = await discoverVenusInvestment();
   if (!destination) throw new Error("VENUS_DESTINATION_UNAVAILABLE");
   next = rediscoverVenus(next, destination);
