@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ session: vi.fn(), prepare: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: vi.fn(), prepare: vi.fn(), get: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "opaque-cookie" }) }) }));
 vi.mock("@/lib/auth/siwe", () => ({ sessionCookie: "equityrelay_session", requireSameOrigin: () => {}, sessionWallet: mocks.session }));
 vi.mock("@/lib/execution/initial-review", () => ({ prepareInitialExecutionReview: mocks.prepare }));
+vi.mock("@/lib/execution/repository", () => ({ getExecutionRoute: mocks.get }));
+vi.mock("@/lib/execution/post-settlement", () => ({ prepareDurableLeg2Review: vi.fn(), prepareDurableVenusReview: vi.fn() }));
+vi.mock("@/lib/execution/recovery-review", () => ({ prepareDurableExitReview: vi.fn(), prepareDurableRedeemReview: vi.fn() }));
+vi.mock("@/lib/execution/next-action", () => ({ prepareDependentAction: vi.fn() }));
+vi.mock("@/lib/execution/test-setup-review", () => ({ prepareDurableTestSetupReview: vi.fn() }));
 import { POST } from "./route";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -21,6 +26,7 @@ describe("read-only authenticated action review", () => {
   it("binds review to session wallet and stays read-only", async () => {
     const wallet = "0x1111111111111111111111111111111111111111";
     mocks.session.mockResolvedValue(wallet);
+    mocks.get.mockResolvedValue({ state: "ROUTE_POLICY_PASS", session: { recovery: null } });
     mocks.prepare.mockResolvedValue({ actionHash: "0xhash", executionArmed: false });
     const response = await POST(request({}), context);
     expect(response.status).toBe(200);
