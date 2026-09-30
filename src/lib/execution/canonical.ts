@@ -1,17 +1,19 @@
 import "server-only";
 import { decodeEventLog, erc20Abi, TransactionNotFoundError, TransactionReceiptNotFoundError, type Hex } from "viem";
 import { matchTransactionSemantics, type ExecutionActionV1 } from "@/domain/execution/action";
-import { sameAddress } from "@/domain/routing/identity";
+import { NVDAB_ADDRESS, sameAddress, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { decodeVenusSupplyCall, inspectVenusSupply, venusMarketReadAbi, type VenusSupplyEvidence, type VenusSupplyReason } from "@/domain/execution/venus-evidence";
 import { bscPublicClient, readBscWithRetry } from "@/lib/execution/rpc";
 import type { Address } from "@/types/route";
 
 export type CanonicalObservation =
-  | { status: "PENDING"; reason: "TRANSACTION_NOT_FOUND" | "RECEIPT_NOT_FOUND" | "CONFIRMATIONS_PENDING" | "FINALITY_PENDING" | "VENUS_VERIFICATION_NOT_READY" }
-  | { status: "FAILED"; reason: "RECEIPT_REVERTED" | "CANONICAL_ACTION_MISMATCH" | "BLOCK_IDENTITY_MISMATCH" | "APPROVAL_EVIDENCE_MISSING" | "SETTLEMENT_EVIDENCE_MISSING" }
+  | { status: "PENDING"; reason: "TRANSACTION_NOT_FOUND" | "RECEIPT_NOT_FOUND" | "CONFIRMATIONS_PENDING" | "FINALITY_PENDING" }
+  | { status: "FAILED"; reason: "RECEIPT_REVERTED" | "CANONICAL_ACTION_MISMATCH" | "BLOCK_IDENTITY_MISMATCH" | "APPROVAL_EVIDENCE_MISSING" | "SETTLEMENT_EVIDENCE_MISSING" | VenusSupplyReason }
   | { status: "CONFIRMED"; txHash: Hex; blockNumber: string; blockHash: Hex; from: Address; to: Address;
       confirmedAt: string; confirmations: string; gas: { nonce: number; gasLimit: string; gasPrice: string | null; effectiveGasPrice: string | null };
       transfers: Array<{ token: Address; from: Address; to: Address; amountRaw: string; logIndex: number }>;
-      settlement: { amountInRaw: string; amountOutRaw: string; inLogIndex: number; outLogIndex: number } | null };
+      settlement: { amountInRaw: string; amountOutRaw: string; inLogIndex: number; outLogIndex: number } | null;
+      venusSupply: VenusSupplyEvidence | null };
 
 export function finalityPolicy(environment: Record<string, string | undefined> = process.env): { minConfirmations: bigint; requireFinalized: boolean } {
   const value = environment.BSC_MIN_CONFIRMATIONS ?? "3";
@@ -92,14 +94,41 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
       if (actual.amountInRaw !== action.amountInRaw) return { status: "FAILED", reason: "SETTLEMENT_EVIDENCE_MISSING" };
     } catch { return { status: "FAILED", reason: "SETTLEMENT_EVIDENCE_MISSING" }; }
   }
-  if (action.kind === "DEPOSIT") return { status: "PENDING", reason: "VENUS_VERIFICATION_NOT_READY" };
+  let venusSupply: VenusSupplyEvidence | null = null;
+  if (action.kind === "DEPOSIT") {
+    if (!sameAddress(action.to, VENUS_VNVDAB_ADDRESS) || !sameAddress(action.tokenIn, NVDAB_ADDRESS))
+      return { status: "FAILED", reason: "VENUS_MARKET_MISMATCH" };
+    let call;
+    try { call = decodeVenusSupplyCall(action.data); }
+    catch { return { status: "FAILED", reason: "VENUS_MINT_CALL_NOT_IDENTIFIED" }; }
+    const receiver = call.receiver ?? action.from;
+    const beforeBlock = receipt.blockNumber - 1n;
+    const [underlying, symbol, implementation, balanceBefore, balanceAfter, snapshotAfter, underlyingBefore, underlyingAfter] =
+      await Promise.all([
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "underlying" })),
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "symbol" })),
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "implementation" })),
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [receiver], blockNumber: beforeBlock })),
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [receiver], blockNumber: receipt.blockNumber })),
+        readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "getAccountSnapshot", args: [receiver], blockNumber: receipt.blockNumber })),
+        readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
+        readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
+      ]);
+    const inspected = inspectVenusSupply({ chainId: 56, transactionHash: hash, transactionFrom: tx.from,
+      transactionTo: tx.to!, transactionValueRaw: tx.value.toString(), calldata: tx.input, receiptStatus: receipt.status,
+      receiptTo: receipt.to!, blockNumber: receipt.blockNumber.toString(), expectedWallet: action.from,
+      expectedAmountRaw: action.amountInRaw, marketIdentity: { market: action.to, underlying, symbol, implementation },
+      logs: receipt.logs, position: { beforeBlock: beforeBlock.toString(), afterBlock: receipt.blockNumber.toString(),
+        receiverVTokenBalanceBeforeRaw: balanceBefore.toString(), receiverVTokenBalanceAfterRaw: balanceAfter.toString(),
+        accountSnapshotAfter: snapshotAfter.map(x => x.toString()) as [string, string, string, string],
+        marketUnderlyingBalanceBeforeRaw: underlyingBefore.toString(), marketUnderlyingBalanceAfterRaw: underlyingAfter.toString() } });
+    if (inspected.status === "REJECTED") return { status: "FAILED", reason: inspected.reason };
+    venusSupply = inspected.evidence;
+  }
   return { status: "CONFIRMED", txHash: hash, blockNumber: receipt.blockNumber.toString(), blockHash: receipt.blockHash,
     from: tx.from, to: tx.to!, confirmedAt: new Date(Number(block.timestamp) * 1000).toISOString(), confirmations: confirmations.toString(),
     gas: { nonce: tx.nonce, gasLimit: tx.gas.toString(), gasPrice: tx.gasPrice?.toString() ?? null,
-      effectiveGasPrice: receipt.effectiveGasPrice?.toString() ?? null }, transfers, settlement: actual };
+      effectiveGasPrice: receipt.effectiveGasPrice?.toString() ?? null }, transfers, settlement: actual, venusSupply };
 }
 
-export function venusSupplyVerificationReadiness(): "NOT_READY" {
-  // The live NVDAB market event/position path must be characterized before any supply can be called verified.
-  return "NOT_READY";
-}
+export function venusSupplyVerificationReadiness(): "READY" { return "READY"; }

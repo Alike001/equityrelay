@@ -5,6 +5,7 @@ export const BSC_CHAIN_ID = 56;
 export const NVDAON_ADDRESS = "0xa9ee28c80f960b889dfbd1902055218cba016f75" as Address;
 export const NVDAB_ADDRESS = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436" as Address;
 export const USDT_ADDRESS = "0x55d398326f99059ff775485246999027b3197955" as Address;
+export const VENUS_VNVDAB_ADDRESS = "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371" as Address;
 
 export function sameAddress(a: string, b: string): boolean { return a.toLowerCase() === b.toLowerCase(); }
 export function isAddress(value: unknown): value is Address { return typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value); }

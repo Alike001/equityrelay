@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeEventTopics, encodeAbiParameters, erc20Abi, type Hex } from "viem";
 import { NVDAON_ADDRESS, USDT_ADDRESS } from "@/domain/routing/identity";
 import type { ExecutionActionV1 } from "@/domain/execution/action";
+import historicalVenus from "@/domain/execution/fixtures/venus-nvdab-mint-mainnet.json";
+import { NVDAB_ADDRESS, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/execution/rpc", () => ({ bscPublicClient: vi.fn(), readBscWithRetry: (read: () => Promise<unknown>) => read() }));
@@ -34,7 +36,7 @@ describe("canonical evidence", () => {
 });
 
 describe("RPC receipt gate", () => {
-  const client = { getChainId: vi.fn(), getTransaction: vi.fn(), getTransactionReceipt: vi.fn(), getBlock: vi.fn(), getBlockNumber: vi.fn() };
+  const client = { getChainId: vi.fn(), getTransaction: vi.fn(), getTransactionReceipt: vi.fn(), getBlock: vi.fn(), getBlockNumber: vi.fn(), readContract: vi.fn() };
   beforeEach(() => {
     vi.mocked(bscPublicClient).mockReturnValue(client as unknown as ReturnType<typeof bscPublicClient>);
     client.getChainId.mockResolvedValue(56);
@@ -76,8 +78,45 @@ describe("RPC receipt gate", () => {
     client.getBlock.mockResolvedValueOnce({ hash: txHash, number: 100n, timestamp: 1000n });
     await expect(observeCanonicalTransaction(txHash, action)).resolves.toMatchObject({ status: "FAILED", reason: "BLOCK_IDENTITY_MISMATCH" });
   });
-  it("keeps Venus NOT_READY even with successful receipt", async () => {
-    await expect(observeCanonicalTransaction(txHash, { ...action, stage: "VENUS_DEPOSIT", kind: "DEPOSIT" })).resolves.toMatchObject({ status: "PENDING", reason: "VENUS_VERIFICATION_NOT_READY" });
+  it("confirms Venus only from canonical supply events and block-specific position evidence", async () => {
+    const venusAction: ExecutionActionV1 = { ...action, routeId: "venus-route", stage: "VENUS_DEPOSIT", kind: "DEPOSIT",
+      from: historicalVenus.transaction.from as `0x${string}`, to: VENUS_VNVDAB_ADDRESS,
+      data: historicalVenus.transaction.input as Hex, tokenIn: NVDAB_ADDRESS, tokenOut: null,
+      amountInRaw: "1099946467462607788", planIdentity: "live-venus-investment" };
+    client.getTransaction.mockResolvedValueOnce({ from: venusAction.from, to: venusAction.to, input: venusAction.data, value: 0n,
+      chainId: 56, gas: 300000n, nonce: 10, gasPrice: 1000000000n,
+      blockHash: historicalVenus.block.hash, blockNumber: BigInt(historicalVenus.block.number) });
+    client.getTransactionReceipt.mockResolvedValueOnce({ status: "success", from: venusAction.from, to: venusAction.to,
+      blockHash: historicalVenus.block.hash, blockNumber: BigInt(historicalVenus.block.number), effectiveGasPrice: 1000000000n,
+      logs: historicalVenus.receipt.logs });
+    client.getBlock.mockResolvedValueOnce({ hash: historicalVenus.block.hash, number: BigInt(historicalVenus.block.number), timestamp: BigInt(historicalVenus.block.timestamp) });
+    client.getBlockNumber.mockResolvedValueOnce(BigInt(historicalVenus.block.number) + 2n);
+    client.readContract.mockImplementation(({ functionName, blockNumber }: { functionName: string; blockNumber?: bigint }) => {
+      if (functionName === "underlying") return Promise.resolve(NVDAB_ADDRESS);
+      if (functionName === "symbol") return Promise.resolve("vNVDAB");
+      if (functionName === "implementation") return Promise.resolve(historicalVenus.marketIdentity.implementationObservedAtValidation);
+      if (functionName === "getAccountSnapshot") return Promise.resolve(historicalVenus.position.accountSnapshotAfter.map(BigInt));
+      if (functionName === "balanceOf" && blockNumber === BigInt(historicalVenus.position.beforeBlock)) {
+        return Promise.resolve(BigInt(historicalVenus.position.receiverVTokenBalanceBeforeRaw));
+      }
+      if (functionName === "balanceOf" && blockNumber === BigInt(historicalVenus.position.afterBlock)) {
+        return Promise.resolve(BigInt(historicalVenus.position.receiverVTokenBalanceAfterRaw));
+      }
+      throw new Error("unexpected read");
+    });
+    // Underlying balance reads share balanceOf; return them in the last two call slots.
+    client.readContract.mockImplementationOnce(async () => NVDAB_ADDRESS)
+      .mockImplementationOnce(async () => "vNVDAB")
+      .mockImplementationOnce(async () => historicalVenus.marketIdentity.implementationObservedAtValidation)
+      .mockImplementationOnce(async () => BigInt(historicalVenus.position.receiverVTokenBalanceBeforeRaw))
+      .mockImplementationOnce(async () => BigInt(historicalVenus.position.receiverVTokenBalanceAfterRaw))
+      .mockImplementationOnce(async () => historicalVenus.position.accountSnapshotAfter.map(BigInt))
+      .mockImplementationOnce(async () => BigInt(historicalVenus.position.marketUnderlyingBalanceBeforeRaw))
+      .mockImplementationOnce(async () => BigInt(historicalVenus.position.marketUnderlyingBalanceAfterRaw));
+    await expect(observeCanonicalTransaction(historicalVenus.transaction.hash as Hex, venusAction)).resolves.toMatchObject({
+      status: "CONFIRMED", venusSupply: { eventType: "Mint", supplier: venusAction.from,
+        underlyingAmountRaw: venusAction.amountInRaw, vTokensMintedRaw: "109994646" },
+    });
   });
   it("requires exact Approval event from token, wallet and spender", () => {
     const approval: ExecutionActionV1 = { ...action, stage: "LEG1_APPROVAL", kind: "APPROVAL", to: NVDAON_ADDRESS,

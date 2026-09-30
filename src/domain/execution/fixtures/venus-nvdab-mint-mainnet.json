@@ -1,0 +1,77 @@
+{
+  "fixtureType": "HISTORICAL MAINNET VERIFIER FIXTURE",
+  "description": "Public BSC evidence for a direct NVDAB supply to Venus. This is not an EquityRelay execution.",
+  "chainId": 56,
+  "transaction": {
+    "hash": "0x5516148304443e2461c673f914d3de4140b8f45ef511df05b311fc68c4c55766",
+    "blockNumber": "124836339",
+    "blockHash": "0x527867e9ea2a222707cb6fd5ddac0d5f49a9e5181689425bcba3a1911b207151",
+    "from": "0xa96cc6e271f0c77c695e0013673831f9dc182fdc",
+    "to": "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371",
+    "input": "0xa0712d680000000000000000000000000000000000000000000000000f43cb7c010df3ac",
+    "value": "0"
+  },
+  "receipt": {
+    "status": "success",
+    "blockNumber": "124836339",
+    "blockHash": "0x527867e9ea2a222707cb6fd5ddac0d5f49a9e5181689425bcba3a1911b207151",
+    "from": "0xa96cc6e271f0c77c695e0013673831f9dc182fdc",
+    "to": "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371",
+    "logs": [
+      {
+        "address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000a96cc6e271f0c77c695e0013673831f9dc182fdc",
+          "0x000000000000000000000000eb8ca841cbe1bc4832a10b15c7dab1081edad371"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000f43cb7c010df3ac",
+        "logIndex": 687
+      },
+      {
+        "address": "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371",
+        "topics": [
+          "0xb4c03061fb5b7fed76389d5af8f2e0ddb09f8c70d1333abbb62582835e10accb"
+        ],
+        "data": "0x000000000000000000000000a96cc6e271f0c77c695e0013673831f9dc182fdc0000000000000000000000000000000000000000000000000f43cb7c010df3ac00000000000000000000000000000000000000000000000000000000068e629600000000000000000000000000000000000000000000000000000000068e6296",
+        "logIndex": 689
+      },
+      {
+        "address": "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000eb8ca841cbe1bc4832a10b15c7dab1081edad371",
+          "0x000000000000000000000000a96cc6e271f0c77c695e0013673831f9dc182fdc"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000000000000000068e6296",
+        "logIndex": 690
+      }
+    ]
+  },
+  "block": {
+    "number": "124836339",
+    "hash": "0x527867e9ea2a222707cb6fd5ddac0d5f49a9e5181689425bcba3a1911b207151",
+    "timestamp": "1790738784"
+  },
+  "marketIdentity": {
+    "market": "0xeb8ca841cbe1bc4832a10b15c7dab1081edad371",
+    "underlying": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+    "symbol": "vNVDAB",
+    "implementationObservedAtValidation": "0xcdfea50f7ceccb24fe804657db8e6c93b689941e"
+  },
+  "position": {
+    "receiver": "0xa96cc6e271f0c77c695e0013673831f9dc182fdc",
+    "beforeBlock": "124836338",
+    "afterBlock": "124836339",
+    "receiverVTokenBalanceBeforeRaw": "0",
+    "receiverVTokenBalanceAfterRaw": "109994646",
+    "accountSnapshotAfter": [
+      "0",
+      "109994646",
+      "0",
+      "10000000018697597430717287165"
+    ],
+    "marketUnderlyingBalanceBeforeRaw": "1490553133211570266010",
+    "marketUnderlyingBalanceAfterRaw": "1491653079679032873798"
+  }
+}
