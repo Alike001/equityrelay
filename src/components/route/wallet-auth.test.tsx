@@ -69,6 +69,7 @@ describe("wallet picker and disconnect", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(screen.getByRole("dialog", { name: "Choose an EVM wallet" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect wallet" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Binance Wallet" }));
     await waitFor(() => expect(screen.getByText(shortWallet())).toBeTruthy());
     expect(binance.calls).toContain("personal_sign");
@@ -156,7 +157,9 @@ describe("wallet picker and disconnect", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Connect wallet" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     const dialog = screen.getByRole("dialog", { name: "Choose an EVM wallet" });
-    expect(dialog.querySelector(".wallet-picker-list")).toBeTruthy();
+    const list = dialog.querySelector(".wallet-picker-list");
+    expect(list).toBeTruthy();
+    expect(list?.children).toHaveLength(5);
     expect(screen.getAllByRole("button", { name: /Wallet \d/ })).toHaveLength(5);
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Choose an EVM wallet" })).toBeNull();

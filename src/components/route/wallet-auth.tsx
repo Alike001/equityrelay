@@ -149,7 +149,7 @@ export function WalletAuth() {
     {wallet && <div className="wallet-identity"><strong>{short(wallet)}</strong><span>BNB Smart Chain</span></div>}<p>{status}</p>
     {disconnectGuidance && <p className="wallet-disconnect-guidance">{disconnectGuidance}</p>}</div>
     <div className="wallet-auth-actions">
-      <button type="button" className="secondary-button" onClick={connect} disabled={busy || !discoveryReady}>{busy ? "Checking wallet…" : wallet ? "Reauthenticate" : "Connect wallet"}</button>
+      {!pickerOpen && <button type="button" className="secondary-button" onClick={connect} disabled={busy || !discoveryReady}>{busy ? "Checking wallet…" : wallet ? "Reauthenticate" : "Connect wallet"}</button>}
       {wrongChain && selected && <button type="button" className="secondary-button" onClick={() => void switchToBsc()} disabled={busy}>Switch network</button>}
       {wallet && <button type="button" className="wallet-disconnect" onClick={() => void disconnect()} disabled={busy}>Disconnect</button>}
     </div>

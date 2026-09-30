@@ -6,7 +6,7 @@ Reviewed 2026-09-30. This phase used read-only RPC calls, local fixtures, and a 
 
 - Vercel production: `https://equityrelay.vercel.app`, HTTPS origin matched exactly.
 - Managed PostgreSQL: Neon free deployment attached through the Vercel marketplace. All four migrations applied. A labeled non-chain fixture containing a route, step, consumed confirmation intent and non-verified receipt survived a full production redeploy, was checked afterward, and was removed. The production readiness endpoint read the durable migration table after deployment.
-- Production RPC: 1RPC BNB, chain 56, minimum three confirmations, finalized evidence required. The readiness endpoint returned a finalized block and `READY_READ_ONLY`.
+- Production RPC: documented 48 Club BSC RPC, chain 56, minimum three confirmations, finalized evidence required. Readiness also requires historical transaction, receipt, block and exact Venus log agreement before returning `READY_READ_ONLY`.
 - Authentication infrastructure: production challenge creation persisted successfully and the wallet rate bucket returned `AUTH_RATE_LIMITED` after its configured limit. A real intended-wallet SIWE signature, refresh, account switch, chain switch, logout and replay rehearsal remains BLOCKED pending user interaction.
 - Execution: `POST /api/route/execute` returned HTTP 423 `MAINNET_EXECUTION_NOT_ARMED`. The environment arm remains false and `PHASE3A_BROADCAST_DISABLED` remains compiled into the submission adapter.
 
@@ -31,7 +31,7 @@ Reviewed 2026-09-30. This phase used read-only RPC calls, local fixtures, and a 
 
 ## BSC and Venus evidence
 
-The production RPC policy is configurable with `BSC_MIN_CONFIRMATIONS` (default 3) and optional `BSC_REQUIRE_FINALIZED`. Read-only calls retry only transient failures. Log reads require a bounded block range, exact contract and topic. The deployment rehearsal selected `https://1rpc.io/bnb`: it passed chain, transaction, receipt, block, finalized-tag and bounded-log reads, but caps `eth_getLogs` at 50 blocks per request. This is the configured proof-rehearsal RPC; its public service limits remain a lock-removal risk.
+The production RPC policy is configurable with `BSC_MIN_CONFIRMATIONS` (default 3) and `BSC_REQUIRE_FINALIZED`; production requires both three confirmations and BSC economic-finality evidence. Read-only calls retry only transient failures. Log reads require a bounded block range, exact contract and topic. The deployment uses `https://rpc.48.club`, which passed chain, historical transaction/receipt/block, finalized-tag and exact one-block Venus-log reads locally and from the production readiness route. The prior 1RPC endpoint intermittently returned HTTP 403 from Vercel for both `eth_chainId` and `finalized`, so it is no longer production authority. Public service availability remains a lock-removal risk.
 
 The live vNVDAB market returned underlying NVDAB, symbol `vNVDAB`, and delegate `0xCDfea50f7CECCB24Fe804657DB8E6c93b689941e`. [Official Venus Core documentation](https://github.com/venusprotocol/venus-protocol-documentation/blob/main/technical-reference/reference-core-pool/vtoken.md) identifies that delegate for BNB Core ERC-20 markets. The [official interface](https://github.com/VenusProtocol/venus-protocol/blob/develop/contracts/Tokens/VTokens/VTokenInterfaces.sol) declares four-field `Mint` and `MintBehalf` events.
 

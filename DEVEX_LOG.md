@@ -255,3 +255,25 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Pin the tested `pg` major and explicitly configure `sslmode=verify-full` when the provider connection format permits it before upgrading.
 - **Suggested improvement:** Managed connection strings should state the certificate-verification behavior explicitly and avoid version-dependent SSL aliases.
 - **Evidence:** Managed production migration run on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 22:23 WAT — 1RPC intermittently forbids Vercel read-only requests
+
+- **API / surface:** BSC JSON-RPC at `https://1rpc.io/bnb`, called from the production Vercel readiness route.
+- **Attempt:** Re-run the production chain/finality readiness probe after a successful deployment.
+- **Expected:** Stable chain ID 56 and finalized-block reads.
+- **Actual:** One production request returned HTTP 403 for `eth_chainId`; the next three requests returned `READY_READ_ONLY` with finalized block `124975863`. An earlier production request returned HTTP 403 for `eth_getBlockByNumber("finalized")`. At the same time, local read-only probes of chain, finalized block, historical transaction/receipt/block and exact Venus logs all returned HTTP 200.
+- **Error/code:** HTTP `403`, `forbidden`.
+- **Workaround:** Remove 1RPC as the production verification authority and require a full canonical capability probe against the replacement endpoint. Do not turn a failed RPC check green through error catching.
+- **Suggested improvement:** Document serverless-origin filtering and return rate-limit or policy metadata that distinguishes temporary edge rejection from unsupported methods.
+- **Evidence:** Repeated production and local read-only calls on 2026-09-30; no transaction submitted.
+
+### 2026-09-30 22:23 WAT — 48 Club RPC passed the complete canonical readiness probe
+
+- **API / surface:** BSC JSON-RPC at the documented `https://rpc.48.club` endpoint.
+- **Attempt:** Read chain ID, `finalized`, historical Venus transaction, receipt, containing block, and an exact-address/exact-topic one-block Mint log query.
+- **Expected:** One endpoint must supply every canonical evidence class EquityRelay needs before lifecycle advancement.
+- **Actual:** All six read-only capabilities returned HTTP 200 and mutually consistent evidence for the historical Venus verifier fixture.
+- **Error/code:** None observed.
+- **Workaround:** Configure this endpoint for the production read path and keep readiness fail-closed. Continue to treat public-endpoint availability as a release risk until an SLA-backed endpoint is selected.
+- **Suggested improvement:** Publish explicit read rate limits, archive depth and availability targets for dApp verification workloads.
+- **Evidence:** Live read-only calls on 2026-09-30; no transaction submitted.
