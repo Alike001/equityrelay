@@ -38,7 +38,8 @@ describe("Venus read-only redeem builder", () => {
     const result = await buildVenusRedeem(owner, destination, target, amount.toString());
     expect(result).toMatchObject({ buildStatus: "READY", simulationStatus: "PASSED", approvalRequired: false,
       target: VENUS_VNVDAB_ADDRESS, functionName: "redeem", redeemVTokensRaw: redeemTokens.toString(),
-      exchangeRateMantissa: rate.toString(), valueWei: "0", calldataSelector: "0xdb006a75", redeemDelayDays: [] });
+      exchangeRateMantissa: rate.toString(), expectedUnderlyingOutRaw: (redeemTokens * rate / 10n ** 18n).toString(),
+      valueWei: "0", calldataSelector: "0xdb006a75", redeemDelayDays: [] });
     expect(signedRequest).toHaveBeenCalledWith("POST", "/api/v1/defi/transaction/redeem", { body: expect.objectContaining({
       address: owner, investmentId: "live-investment", token: { tokenAddress: NVDAB_ADDRESS, amount: "0.02202185420972685" }, simulate: true,
     }) });

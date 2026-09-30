@@ -25,12 +25,12 @@ export async function POST(request: Request): Promise<Response> {
     if (!destination?.investable) return Response.json({ state: "DESTINATION_UNAVAILABLE" }, { headers: { "Cache-Control": "private, no-store" } });
     const amountRaw = toRawUnits(parsed.data.amount, target.decimals);
     const redeem = await buildVenusRedeem(owner, destination, target, amountRaw);
-    const quote = await requestQuote(1, NVDAB_ADDRESS, USDT_ADDRESS, amountRaw, owner);
+    const quote = await requestQuote(1, NVDAB_ADDRESS, USDT_ADDRESS, redeem.expectedUnderlyingOutRaw, owner);
     return Response.json({
       state: redeem.buildStatus === "READY" && quote ? "EXIT_PREFLIGHT_READY" : "EXIT_UNAVAILABLE",
       destination: { protocol: destination.protocol, investable: destination.investable, observedAt: destination.observedAt },
       redeem,
-      exitQuote: quote ? { inputNvdab: parsed.data.amount, outputUsdt: decimalText(rawToDecimal(quote.outputRaw, quote.outputDecimals ?? 18)), observedAt: quote.observedAt, expiresAt: quote.expiresAt } : null,
+      exitQuote: quote ? { inputNvdab: decimalText(rawToDecimal(redeem.expectedUnderlyingOutRaw, target.decimals)), outputUsdt: decimalText(rawToDecimal(quote.outputRaw, quote.outputDecimals ?? 18)), observedAt: quote.observedAt, expiresAt: quote.expiresAt } : null,
       observedAt: new Date().toISOString(),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

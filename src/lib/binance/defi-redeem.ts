@@ -35,6 +35,7 @@ export type VenusRedeemBuild = {
   functionName: "redeem" | "redeemUnderlying" | null;
   redeemVTokensRaw: string | null;
   exchangeRateMantissa: string | null;
+  expectedUnderlyingOutRaw: string;
   amountUnderlyingRaw: string;
   amountUnderlyingHuman: string;
   valueWei: string | null;
@@ -48,7 +49,8 @@ export type VenusRedeemBuild = {
 
 function unavailable(amountRaw: string, amountHuman: string, reason: string, status: VenusRedeemBuild["simulationStatus"]): VenusRedeemBuild {
   return { buildStatus: "UNAVAILABLE", simulationStatus: status, reason, approvalRequired: false, target: null,
-    functionName: null, redeemVTokensRaw: null, exchangeRateMantissa: null, amountUnderlyingRaw: amountRaw, amountUnderlyingHuman: amountHuman, valueWei: null,
+    functionName: null, redeemVTokensRaw: null, exchangeRateMantissa: null, expectedUnderlyingOutRaw: amountRaw,
+    amountUnderlyingRaw: amountRaw, amountUnderlyingHuman: amountHuman, valueWei: null,
     calldataSelector: null, gasLimit: null, maxFeePerGas: null, maxPriorityFeePerGas: null, redeemDelayDays: null, preview: null };
 }
 
@@ -82,6 +84,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
   catch { throw new Error("INVALID_REDEEM_CALLDATA"); }
   let redeemVTokensRaw: string | null = null;
   let exchangeRateMantissa: string | null = null;
+  let expectedUnderlyingOutRaw = amountRaw;
   const decodedAmount = BigInt(decoded.args[0] as bigint);
   if (decoded.functionName === "redeemUnderlying") {
     if (decodedAmount.toString() !== amountRaw) throw new Error("REDEEM_AMOUNT_MISMATCH");
@@ -91,6 +94,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
     if (expectedVTokens <= 0n || decodedAmount !== expectedVTokens) throw new Error("REDEEM_EXCHANGE_RATE_MISMATCH");
     redeemVTokensRaw = expectedVTokens.toString();
     exchangeRateMantissa = rate.toString();
+    expectedUnderlyingOutRaw = (expectedVTokens * rate / 10n ** 18n).toString();
   } else throw new Error("INVALID_REDEEM_CALLDATA");
   const preview = build.preview;
   const failReason = simulationReason ?? preview?.errorMessage?.trim() ?? null;
@@ -100,7 +104,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
     preview?.success === false || failReason ? "FAILED" : "UNAVAILABLE";
   return {
     buildStatus: "READY", simulationStatus, reason: failReason, approvalRequired: false,
-    target: item.to as Address, functionName: decoded.functionName, redeemVTokensRaw, exchangeRateMantissa,
+    target: item.to as Address, functionName: decoded.functionName, redeemVTokensRaw, exchangeRateMantissa, expectedUnderlyingOutRaw,
     amountUnderlyingRaw: amountRaw, amountUnderlyingHuman: amountHuman,
     valueWei: "0", calldataSelector: item.data.slice(0, 10), gasLimit: parseGas(item.gasLimit),
     maxFeePerGas: parseGas(item.maxFeePerGas, true), maxPriorityFeePerGas: parseGas(item.maxPriorityFeePerGas, true),

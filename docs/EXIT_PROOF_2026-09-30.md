@@ -33,7 +33,8 @@ The current Binance DeFi builder accepted the same live Venus investment and exa
 - Simulation: `PASSED`.
 - Previewed underlying received: `0.022021850041108519 NVDAB`.
 - Redemption delay: none (`[]`).
-- Indicative `NVDAB → USDT` quote: `5.018364764324821207 USDT`.
+- Exchange-rate-derived underlying available to quote: `0.022021850041108519 NVDAB`.
+- Indicative `NVDAB → USDT` quote: `5.026662606796302815 USDT`.
 
 The exit value is not guaranteed. NVIDIA's market price, representation ratios, spread, slippage, gas, protocol liquidity, market conditions, and Venus exchange rate can change. A future exit must rediscover the investment, rebuild the redeem, validate current state, and request a fresh NVDAB → USDT quote.
 
