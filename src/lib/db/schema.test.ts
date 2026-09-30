@@ -51,5 +51,7 @@ describe("PostgreSQL durable schema", () => {
       expect(restored.rows[0].used_at).not.toBeNull();
       await db.close();
     } finally { await rm(directory, { recursive: true, force: true }); }
-  }, 20_000);
+  // PGlite creates, closes, and reopens a filesystem-backed cluster here. Under
+  // the full isolated-worker suite that can exceed Vitest's normal 20s ceiling.
+  }, 60_000);
 });

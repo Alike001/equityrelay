@@ -28,16 +28,16 @@ describe("read-only proof wallet", () => {
 describe("smallest technical route", () => {
   const result = (amount: string, viable: boolean): CandidateResult => ({ amount, viable, status: viable ? "WALLET_STATE_BLOCKED" : "POLICY_BLOCKED", retentionPercent: viable ? "99.93" : "99", venusBuild: viable ? "READY" : null, reason: null, quotedUsdtOutput: null, quotedNvdabOutput: null });
   it("probes ascending and stops after the first complete viable route", async () => {
-    expect(PROOF_CANDIDATES).toEqual(["0.005", "0.01", "0.02", "0.05"]);
-    const probe = vi.fn(async amount => result(amount, amount === "0.02"));
+    expect(PROOF_CANDIDATES).toEqual(["0.021", "0.022", "0.023", "0.024", "0.025", "0.0275", "0.03"]);
+    const probe = vi.fn(async amount => result(amount, amount === "0.023"));
     const scan = await firstViableCandidate(probe);
-    expect(probe.mock.calls.map(x => x[0])).toEqual(["0.005", "0.01", "0.02"]);
-    expect(scan.smallestViable?.amount).toBe("0.02");
+    expect(probe.mock.calls.map(x => x[0])).toEqual(["0.021", "0.022", "0.023"]);
+    expect(scan.smallestViable?.amount).toBe("0.023");
   });
   it("only calls a quote below minimum when the error says so", () => {
     expect(classifyCandidateError("40301", "Amount is below minimum trade size")).toBe("BELOW_MINIMUM");
-    expect(classifyCandidateError("40401", "No route")).toBe("UNAVAILABLE");
-    expect(classifyCandidateError("40368", "Ondo assets only pair with stablecoins")).toBe("UNAVAILABLE");
+    expect(classifyCandidateError("40401", "No route")).toBe("API_UNAVAILABLE");
+    expect(classifyCandidateError("40368", "Ondo assets only pair with stablecoins")).toBe("API_UNAVAILABLE");
   });
 });
 describe("gas math", () => {

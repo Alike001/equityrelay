@@ -31,19 +31,20 @@ function reasonOf(error: unknown): string {
 
 async function candidate(owner: Address, amount: string, source: RepresentationSnapshot, target: RepresentationSnapshot, destination: DestinationSnapshot): Promise<{ result: CandidateResult; decision: RouteDecision | null; deposit?: PreflightStage }> {
   try {
-    if (!destination.investable) return { result: unavailableCandidate(amount, "UNAVAILABLE", "Venus NVDAB is not investable"), decision: null };
+    if (!destination.investable) return { result: unavailableCandidate(amount, "DESTINATION_UNAVAILABLE", "Venus NVDAB is not investable"), decision: null };
     const sourceRaw = toRawUnits(amount, source.decimals);
     const leg1 = await requestQuote(1, source.address, USDT_ADDRESS, sourceRaw, owner);
-    if (!leg1) return { result: unavailableCandidate(amount, "UNAVAILABLE", "No NVDAon to USDT quote returned"), decision: null };
+    if (!leg1) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", "No NVDAon to USDT quote returned"), decision: null };
     const leg2 = await requestQuote(2, USDT_ADDRESS, target.address, leg1.outputRaw, owner);
-    if (!leg2) return { result: unavailableCandidate(amount, "UNAVAILABLE", "No USDT to NVDAB quote returned"), decision: null };
+    if (!leg2) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", "No USDT to NVDAB quote returned"), decision: null };
     const decision = evaluateRoute(intent(owner, amount), { source, target, sourceRaw, leg1, leg2, destination });
     const quotedUsdtOutput = decimalText(rawToDecimal(leg1.outputRaw, leg1.outputDecimals ?? USDT_DECIMALS));
     const quotedNvdabOutput = decimalText(rawToDecimal(leg2.outputRaw, target.decimals));
     if (decision.state !== "PASS") return { result: { amount, status: "POLICY_BLOCKED", viable: false, retentionPercent: decision.retentionPercent, venusBuild: null, reason: decision.reasons.join(", "), quotedUsdtOutput, quotedNvdabOutput }, decision };
     const deposit = await buildVenusDeposit(owner, destination, target, leg2.outputRaw);
-    const viable = deposit.buildStatus === "READY" && deposit.authorizationStatus === "BOUNDED_READY";
-    const status = !viable ? "UNAVAILABLE" : deposit.simulationStatus === "BLOCKED_BY_WALLET_STATE" ? "WALLET_STATE_BLOCKED" : "AVAILABLE";
+    const authorizationSafe = deposit.authorizationStatus === "BOUNDED_READY" || deposit.authorizationStatus === "NOT_REQUIRED";
+    const viable = deposit.buildStatus === "READY" && authorizationSafe;
+    const status = !viable ? "DESTINATION_UNAVAILABLE" : deposit.simulationStatus === "BLOCKED_BY_WALLET_STATE" ? "WALLET_STATE_BLOCKED" : "AVAILABLE";
     return { result: { amount, status, viable, retentionPercent: decision.retentionPercent, venusBuild: deposit.buildStatus, reason: deposit.reason, quotedUsdtOutput, quotedNvdabOutput }, decision, deposit };
   } catch (error) {
     const reason = reasonOf(error);
@@ -58,15 +59,15 @@ async function sourceAcquisition(owner: Address, source: RepresentationSnapshot,
   const leg1Human = rawToDecimal(selected.evidence.leg1.outputRaw, selected.evidence.leg1.outputDecimals ?? USDT_DECIMALS);
   const probes: AcquisitionResult["probes"] = [];
   // Reverse-side quotes are indicative test setup. Probe bounded increases and stop at the first quote that covers the deficit.
-  for (const multiplier of ["1", "1.01", "1.05", "1.1", "1.25", "1.5", "2", "4", "8"]) {
-    const input = decimalText(leg1Human.mul(new Decimal(multiplier)));
+  for (const multiplier of ["1", "1.0025", "1.005", "1.0075", "1.01", "1.02", "1.05", "1.1", "1.25", "1.5", "2"]) {
+    const input = leg1Human.mul(new Decimal(multiplier)).toDecimalPlaces(USDT_DECIMALS, Decimal.ROUND_DOWN).toFixed();
     try {
       const quote = await requestQuote(2, USDT_ADDRESS, source.address, toRawUnits(input, USDT_DECIMALS), owner);
-      if (!quote) { probes.push({ usdtInput: input, status: "UNAVAILABLE", reason: "No USDT to NVDAon quote returned" }); continue; }
+      if (!quote) { probes.push({ usdtInput: input, quotedNvdaonOutput: null, status: "UNAVAILABLE", reason: "No USDT to NVDAon quote returned" }); continue; }
       const output = decimalText(rawToDecimal(quote.outputRaw, source.decimals));
-      probes.push({ usdtInput: input, status: "AVAILABLE", reason: null });
+      probes.push({ usdtInput: input, quotedNvdaonOutput: output, status: "AVAILABLE", reason: null });
       if (new Decimal(output).gte(deficit)) return { result: { kind: "TEST_SETUP", required: true, status: "AVAILABLE", usdtInput: input, quotedNvdaonOutput: output, probes, note: "Indicative USDT to NVDAon test setup quote. This purchase is outside the EquityRelay route." }, quote };
-    } catch (error) { probes.push({ usdtInput: input, status: classifyCandidateError(error instanceof BinanceApiError ? error.businessCode : "", reasonOf(error)) === "BELOW_MINIMUM" ? "BELOW_MINIMUM" : "UNAVAILABLE", reason: reasonOf(error) }); }
+    } catch (error) { probes.push({ usdtInput: input, quotedNvdaonOutput: null, status: classifyCandidateError(error instanceof BinanceApiError ? error.businessCode : "", reasonOf(error)) === "BELOW_MINIMUM" ? "BELOW_MINIMUM" : "UNAVAILABLE", reason: reasonOf(error) }); }
   }
   return { result: { kind: "TEST_SETUP", required: true, status: "UNAVAILABLE", usdtInput: null, quotedNvdaonOutput: null, probes, note: "No read-only test setup quote covered the source deficit." }, quote: null };
 }

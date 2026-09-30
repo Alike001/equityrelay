@@ -2,12 +2,15 @@ import Decimal from "decimal.js";
 import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
 import type { CandidateResult, CandidateStatus, GasEstimate, ProofAsset, WalletReadiness, FundingRequirement } from "@/types/readiness";
 
-export const PROOF_CANDIDATES = ["0.005", "0.01", "0.02", "0.05"] as const;
+// Phase 2C established that 0.02 is below Binance's current USD minimum while
+// 0.05 is viable. Probe the unresolved interval in ascending order and stop at
+// the first complete route. Do not split orders to evade the venue minimum.
+export const PROOF_CANDIDATES = ["0.021", "0.022", "0.023", "0.024", "0.025", "0.0275", "0.03"] as const;
 
 export function classifyCandidateError(code: string, message: string): CandidateStatus {
   // An empty quote or generic API error is not evidence of a protocol minimum.
   return /(?:below.{0,20}minim|minim.{0,20}(?:amount|size|trade)|amount.{0,20}too small)/i.test(`${code} ${message}`)
-    ? "BELOW_MINIMUM" : "UNAVAILABLE";
+    ? "BELOW_MINIMUM" : "API_UNAVAILABLE";
 }
 
 export async function firstViableCandidate(probe: (amount: string) => Promise<CandidateResult>): Promise<{ candidates: CandidateResult[]; smallestViable: CandidateResult | null }> {

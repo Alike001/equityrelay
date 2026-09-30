@@ -36,10 +36,10 @@ beforeEach(() => {
   vi.mocked(discoverVenusInvestment).mockResolvedValue({ protocol: "Venus", chainId: 56, investmentId: "live-investment", assetAddress: NVDAB_ADDRESS, investable: true, observedAt });
   vi.mocked(getProofWalletBalances).mockResolvedValue({ walletShort: "0x1111…1111", observedAt, assets: Object.fromEntries(["BNB", "NVDAon", "USDT", "NVDAB"].map(asset => [asset, { asset, balance: "0", rawBalance: "0", reported: false }])) as Awaited<ReturnType<typeof getProofWalletBalances>>["assets"] });
   vi.mocked(requestQuote).mockImplementation(async (leg, from, to, inputRaw) => {
-    if (from === NVDAON_ADDRESS && BigInt(inputRaw) < 20000000000000000n) throw new BinanceApiError("/quote", 200, "40375", "Minimum order amount is 5 USD.");
+    if (from === NVDAON_ADDRESS && BigInt(inputRaw) < 22000000000000000n) throw new BinanceApiError("/quote", 200, "40375", "Minimum order amount is 5 USD.");
     if (from === NVDAON_ADDRESS) return quote(leg, from, to, inputRaw, "4000000000000000000");
-    if (to === NVDAB_ADDRESS) return quote(leg, from, to, inputRaw, "20000000000000000");
-    if (to === NVDAON_ADDRESS) return quote(leg, from, to, inputRaw, "20000000000000000");
+    if (to === NVDAB_ADDRESS) return quote(leg, from, to, inputRaw, "22000000000000000");
+    if (to === NVDAON_ADDRESS) return quote(leg, from, to, inputRaw, "22000000000000000");
     return null;
   });
   vi.mocked(buildVenusDeposit).mockResolvedValue({ label: "Prepare Venus", indicative: true, buildStatus: "READY", actions: [], simulationStatus: "BLOCKED_BY_WALLET_STATE", simulationPrerequisite: "INDICATIVE_AFTER_LEG1", authorizationStatus: "BOUNDED_READY", rejectedAuthorization: null, reason: "40484: Insufficient balance", previewDetails: null });
@@ -51,19 +51,27 @@ describe("live readiness orchestration", () => {
     const result = await buildMainnetReadiness(owner);
     expect(result.kind).toBe("readiness");
     if (result.kind !== "readiness") return;
-    expect(result.candidates.map(x => [x.amount, x.status])).toEqual([["0.005", "BELOW_MINIMUM"], ["0.01", "BELOW_MINIMUM"], ["0.02", "WALLET_STATE_BLOCKED"]]);
-    expect(result.smallestViable?.amount).toBe("0.02");
-    expect(result.acquisition).toMatchObject({ kind: "TEST_SETUP", required: true, status: "AVAILABLE", usdtInput: "4", quotedNvdaonOutput: "0.02" });
+    expect(result.candidates.map(x => [x.amount, x.status])).toEqual([["0.021", "BELOW_MINIMUM"], ["0.022", "WALLET_STATE_BLOCKED"]]);
+    expect(result.smallestViable?.amount).toBe("0.022");
+    expect(result.acquisition).toMatchObject({ kind: "TEST_SETUP", required: true, status: "AVAILABLE", usdtInput: "4", quotedNvdaonOutput: "0.022" });
     expect(requestQuote).toHaveBeenCalledWith(2, USDT_ADDRESS, NVDAON_ADDRESS, "4000000000000000000", owner);
-    expect(buildVenusDeposit).toHaveBeenCalledWith(owner, expect.objectContaining({ investmentId: "live-investment" }), expect.objectContaining({ address: NVDAB_ADDRESS }), "20000000000000000");
+    expect(buildVenusDeposit).toHaveBeenCalledWith(owner, expect.objectContaining({ investmentId: "live-investment" }), expect.objectContaining({ address: NVDAB_ADDRESS }), "22000000000000000");
   });
   it("does not call acquisition when the source balance already covers the selected route", async () => {
     const current = await getProofWalletBalances(owner, (await discoverRepresentations()).source, (await discoverRepresentations()).target);
-    vi.mocked(getProofWalletBalances).mockResolvedValue({ ...current, assets: { ...current.assets, NVDAon: { asset: "NVDAon", balance: "0.02", rawBalance: "20000000000000000", reported: true } } });
+    vi.mocked(getProofWalletBalances).mockResolvedValue({ ...current, assets: { ...current.assets, NVDAon: { asset: "NVDAon", balance: "0.022", rawBalance: "22000000000000000", reported: true } } });
     const result = await buildMainnetReadiness(owner);
     expect(result.kind).toBe("readiness");
     if (result.kind !== "readiness") return;
     expect(result.acquisition).toMatchObject({ kind: "TEST_SETUP", required: false, status: "NOT_REQUIRED" });
     expect(vi.mocked(requestQuote).mock.calls.some(call => call[2] === NVDAON_ADDRESS)).toBe(false);
+  });
+  it("accepts an omitted Venus approval only when Binance reports no approval is required", async () => {
+    vi.mocked(buildVenusDeposit).mockResolvedValue({ label: "Prepare Venus", indicative: true, buildStatus: "READY", actions: [], simulationStatus: "BLOCKED_BY_WALLET_STATE", simulationPrerequisite: "INDICATIVE_AFTER_LEG1", authorizationStatus: "NOT_REQUIRED", rejectedAuthorization: null, reason: "40484: Insufficient balance", previewDetails: null });
+    const result = await buildMainnetReadiness(owner);
+    expect(result.kind).toBe("readiness");
+    if (result.kind !== "readiness") return;
+    expect(result.smallestViable?.amount).toBe("0.022");
+    expect(result.smallestViable?.status).toBe("WALLET_STATE_BLOCKED");
   });
 });
