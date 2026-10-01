@@ -43,13 +43,33 @@ The former $2 planning cap is no longer the active assumption. The minimum teste
 
 `EQUITYRELAY_MAINNET_EXECUTION` defaults to false. `requireBroadcastRelease()` always throws `PHASE3A_BROADCAST_DISABLED`. The built server returned HTTP 423 `MAINNET_EXECUTION_NOT_ARMED` with the flag false, and HTTP 423 `PHASE3A_BROADCAST_DISABLED` with it true. There is no enabled wallet transaction control, backend private key or Agentic Wallet path.
 
+Phase 3E adds a third client handoff stop: `requireConnectedWalletSendRelease()` always throws `PHASE3E_WALLET_SEND_DISABLED` before `eth_sendTransaction`. The selected EIP-1193 provider is checked for the authenticated account and chain 56, but no wallet transaction prompt can be opened in this release.
+
+## Phase 3E action handoff
+
+- The Phase 3A `/api/route/execute` route is deprecated and permanently closed. It is not part of the release design and accepts no transaction input.
+- The browser may issue a confirmation intent only for a persisted `REVIEW_READY` step. The token is random, stored only by hash, and clipped to the remaining safe quote review window. Quote-bound actions therefore cannot inherit the longer general confirmation lifetime.
+- `POST /api/execution/routes/[routeId]/actions/[stepId]` is the only action-delivery boundary. It derives the wallet from the HttpOnly SIWE session and verifies the route, step, stage, semantic action hash, route version, unused token, quote freshness, action order, current balances, gas reserve, allowance, policy, and live Venus availability where applicable. It returns only `from`, `to`, `data`, `value`, and chain `0x38` from durable server state.
+- An expired quote produces `QUOTE_REFRESH_REQUIRED`. The old step is superseded, its intent is consumed, the route version is incremented, and a fresh quote/action/review must be created. Quote IDs and transaction semantics are never refreshed under an existing token.
+- The browser handoff calls the exact selected EIP-1193 provider. It does not fall back to `window.ethereum`. The browser cannot submit target, calldata, native value, token, spender, approval amount, quote ID, investment ID, or stage as transaction authority.
+- `POST /api/execution/routes/[routeId]/transactions/[stepId]` accepts only an operation and transaction hash. The hash is a lookup hint. Canonical BSC transaction semantics, receipt success, block identity, confirmation/finality policy, and action-specific logs must match before lifecycle advancement. A pending step cannot accept a second hash; duplicate reporting of the same hash is idempotent.
+
+## Historical Venus redemption evidence
+
+Historical BSC transaction `0xa70c2d0622e26a3b5ddc34f33bac4de07ec2967328a3c92b67f2d83c44653336` at block `124638518` validates the live vNVDAB `redeem(uint256)` path. Canonical RPC evidence shows a successful call to the live market, one exact `Redeem` event for redeemer `0x86b6…17c5`, 272 raw vNVDAB redeemed, `2720000005067` raw NVDAB returned, one matching vNVDAB transfer into the market, and one matching NVDAB transfer to the redeemer. The event records a zero resulting vToken balance; current `balanceOf` and `getAccountSnapshot` also return zero. The selected public RPCs do not expose archive `eth_call` at this block, so unavailable historical position reads are explicitly distinguished from transient canonical RPC failures. The event plus both token transfers remain mandatory. This fixture is public historical verifier evidence and is not an EquityRelay execution.
+
+## Gas evidence boundary
+
+The 2026-10-01 read-only refresh classified setup/product actions individually. Current Binance estimates were available for both setup actions, both bounded product approvals, both swaps, and the bounded Venus approval. The Venus deposit gas remained unavailable for the empty quote wallet. The recovery build returned a current redeem limit and exit-swap limit, while the exit approval gas remained unavailable. Historical canonical supply gas and a same-token approval estimate may be used only as `HISTORICAL_CANONICAL` and `PROXY` planning evidence. They are not exact future fees. The resulting planning reserve is approximately `0.00066 BNB` at the observed gas price with a 2× aggregate buffer; it must be refreshed before funding.
+
 ## Required before a separate lock-removal commit
 
 1. Confirm the managed Neon backup/retention policy and use restricted production credentials for any execution-enabled environment.
 2. Complete real connected-wallet SIWE browser tests at the final HTTPS origin, including account/chain changes, replay, expiry, wrong signer, logout and reload.
 3. Verify trusted edge IP headers and rate limits under production concurrency.
-4. Select a production BSC RPC with reliable transaction, receipt, finalized, exact-log and archive access; test confirmation counting and timeout/rate behavior.
-5. Revalidate the live vNVDAB market, underlying and implementation immediately before any future deposit, and retain regression coverage against the historical canonical fixture.
+4. Revalidate the configured production BSC RPC confirmation/finality behavior and rate limits immediately before a funded proof.
+5. Revalidate the live vNVDAB market, underlying and implementation immediately before any future deposit, and retain regression coverage against both historical canonical fixtures.
 6. Review lost-hash and abandoned-prompt behavior under possible delayed wallet broadcasts; do not equate zero recent matches with proof of no submission.
-7. Rehearse each enabled action's live balance, allowance, gas, quote freshness, bounded approval and exposure-policy checks; verify restart/two-tab behavior in the deployed runtime.
-8. Obtain a distinct security review and explicit authorization for any later funded mainnet proof. Removing the code lock must be a separate reviewed commit.
+7. Refresh every enabled action's live balance, allowance, gas, quote freshness, bounded approval and exposure-policy checks. Resolve or explicitly accept the wallet-state-dependent deposit and exit-approval gas gaps before funding.
+8. Connect the disabled UI review control to the tested handoff function only in the dedicated lock-removal change; retain one transaction at a time and canonical stop points.
+9. Obtain a distinct security review and explicit authorization for any later funded mainnet proof. Removing the code lock must be a separate reviewed commit.

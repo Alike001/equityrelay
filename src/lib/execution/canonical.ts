@@ -6,6 +6,12 @@ import { decodeVenusSupplyCall, inspectVenusSupply, inspectVenusRedeem, venusMar
 import { bscPublicClient, readBscWithRetry } from "@/lib/execution/rpc";
 import type { Address } from "@/types/route";
 
+function isHistoricalStateUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("not supported") || message.includes("missing trie node") ||
+    message.includes("historical state") || message.includes("archive");
+}
+
 export type CanonicalObservation =
   | { status: "PENDING"; reason: "TRANSACTION_NOT_FOUND" | "RECEIPT_NOT_FOUND" | "CONFIRMATIONS_PENDING" | "FINALITY_PENDING" }
   | { status: "FAILED"; reason: "RECEIPT_REVERTED" | "CANONICAL_ACTION_MISMATCH" | "BLOCK_IDENTITY_MISMATCH" | "APPROVAL_EVIDENCE_MISSING" | "SETTLEMENT_EVIDENCE_MISSING" | VenusSupplyReason | VenusRedeemReason }
@@ -130,20 +136,24 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
     if (!sameAddress(action.to, VENUS_VNVDAB_ADDRESS) || !sameAddress(action.tokenIn, VENUS_VNVDAB_ADDRESS) ||
         !sameAddress(action.tokenOut ?? "", NVDAB_ADDRESS)) return { status: "FAILED", reason: "VENUS_MARKET_MISMATCH" };
     const beforeBlock = receipt.blockNumber - 1n;
-    const [balanceBefore, balanceAfter, snapshotAfter, underlyingBefore, underlyingAfter] = await Promise.all([
+    const position = await Promise.all([
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [action.from], blockNumber: beforeBlock })),
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [action.from], blockNumber: receipt.blockNumber })),
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "getAccountSnapshot", args: [action.from], blockNumber: receipt.blockNumber })),
       readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
       readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
-    ]);
+    ]).then(([balanceBefore,balanceAfter,snapshotAfter,underlyingBefore,underlyingAfter]) => ({
+      beforeBlock: beforeBlock.toString(), afterBlock: receipt.blockNumber.toString(),
+      vTokenBalanceBeforeRaw: balanceBefore.toString(), vTokenBalanceAfterRaw: balanceAfter.toString(),
+      accountSnapshotAfter: snapshotAfter.map(x => x.toString()) as [string,string,string,string],
+      marketUnderlyingBalanceBeforeRaw: underlyingBefore.toString(), marketUnderlyingBalanceAfterRaw: underlyingAfter.toString(),
+    })).catch((error: unknown) => {
+      if (isHistoricalStateUnavailable(error)) return undefined;
+      throw error;
+    });
     const inspected = inspectVenusRedeem({ transactionHash: hash, blockNumber: receipt.blockNumber.toString(), transactionFrom: tx.from,
       transactionTo: tx.to!, transactionValueRaw: tx.value.toString(), calldata: tx.input, expectedWallet: action.from,
-      expectedVTokensRaw: action.amountInRaw, logs: receipt.logs,
-      position: { beforeBlock: beforeBlock.toString(), afterBlock: receipt.blockNumber.toString(),
-        vTokenBalanceBeforeRaw: balanceBefore.toString(), vTokenBalanceAfterRaw: balanceAfter.toString(),
-        accountSnapshotAfter: snapshotAfter.map(x => x.toString()) as [string,string,string,string],
-        marketUnderlyingBalanceBeforeRaw: underlyingBefore.toString(), marketUnderlyingBalanceAfterRaw: underlyingAfter.toString() } });
+      expectedVTokensRaw: action.amountInRaw, logs: receipt.logs, position });
     if (inspected.status === "REJECTED") return { status: "FAILED", reason: inspected.reason };
     venusRedeem = inspected.evidence;
     actual = { amountInRaw: inspected.evidence.vTokensRedeemedRaw, amountOutRaw: inspected.evidence.underlyingReceivedRaw,
@@ -156,3 +166,4 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
 }
 
 export function venusSupplyVerificationReadiness(): "READY" { return "READY"; }
+export function venusRedeemVerificationReadiness(): "READY" { return "READY"; }

@@ -277,3 +277,25 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Configure this endpoint for the production read path and keep readiness fail-closed. Continue to treat public-endpoint availability as a release risk until an SLA-backed endpoint is selected.
 - **Suggested improvement:** Publish explicit read rate limits, archive depth and availability targets for dApp verification workloads.
 - **Evidence:** Live read-only calls on 2026-09-30; no transaction submitted.
+
+### 2026-10-01 07:56 WAT — Historical vNVDAB redemption established the canonical exit verifier path
+
+- **API / surface:** BSC JSON-RPC transaction, receipt and exact-topic vNVDAB log reads.
+- **Attempt:** Discover and validate one genuine historical redemption without a wide log scan.
+- **Expected:** A successful `redeem(uint256)` call with one exact Redeem event, matching vToken movement, matching NVDAB return and position evidence where the RPC supports it.
+- **Actual:** Transaction `0xa70c2d0622e26a3b5ddc34f33bac4de07ec2967328a3c92b67f2d83c44653336` at block `124638518` redeemed `272` raw vNVDAB and returned `2720000005067` raw NVDAB to `0x86b6…17c5`. The Redeem event and both token transfers agree exactly. The event and current account state show zero resulting vNVDAB.
+- **Error/code:** Public 48 Club, Binance dataseed, defibit and 1RPC endpoints returned `-32000` / not supported for block-specific archive `eth_call` at this historical block.
+- **Workaround:** Require the canonical receipt, exact event and both exact token transfers. Use historical position reads when available; fall back only for explicit archive-state unsupported errors, never for transient RPC failure.
+- **Suggested improvement:** RPC providers should publish archive-state depth and distinguish pruned state from transient service failures with stable error codes.
+- **Evidence:** Live read-only canonical BSC evidence on 2026-10-01; no transaction submitted.
+
+### 2026-10-01 07:56 WAT — Empty-wallet state leaves two gas estimates unavailable
+
+- **API / surface:** Binance Trading/DeFi transaction builders and gas-limit API.
+- **Attempt:** Refresh every possible setup, product and recovery action for the minimum 0.022 NVDAon plan.
+- **Expected:** Current gas evidence for each unsigned action or an explicit gap.
+- **Actual:** Current estimates were returned for setup approval/swap, three bounded product approvals/swaps, Venus redeem and the final exit swap. The Venus deposit gas and final exit approval gas were unavailable under the current wallet state. The historical canonical deposit used `282660` gas, and the current same-token bounded approval provides proxy evidence only.
+- **Error/code:** No new Binance business error; the unavailable estimates are wallet-state dependent.
+- **Workaround:** Classify each action as `LIVE_CURRENT`, `HISTORICAL_CANONICAL`, `PROXY`, or `UNAVAILABLE`, and keep the aggregate reserve labeled as planning evidence.
+- **Suggested improvement:** Allow gas estimation against an ordered simulated state or return a documented conservative gas limit without requiring the wallet to already hold/approve intermediate assets.
+- **Evidence:** Live authenticated read-only Binance calls on 2026-10-01; no transaction submitted.

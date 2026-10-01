@@ -32,6 +32,8 @@ export async function estimateActionGas(action: PreflightAction): Promise<string
 
 export async function estimateProofGas(actions: PreflightAction[], setupActions: PreflightAction[] | null, setupRequired: boolean): Promise<GasEstimate> {
   const missing: string[] = [];
+  const evidence: NonNullable<GasEstimate["evidence"]> = [];
+  const observedAt = new Date().toISOString();
   if (actions.filter(action => action.kind === "SWAP").length !== 2) missing.push("Two swap builds unavailable for gas estimate");
   if (actions.filter(action => action.kind === "DEPOSIT").length !== 1) missing.push("Venus deposit build unavailable for gas estimate");
   let priceWei: string | null = null;
@@ -46,6 +48,9 @@ export async function estimateProofGas(actions: PreflightAction[], setupActions:
     for (const [index, item] of items.entries()) {
       try {
         const units = BigInt(await estimateActionGas(item));
+        evidence.push({ action: `${label.toUpperCase()}_${index + 1}_${item.kind}_${item.tokenInLabel}`,
+          gasUnits: units.toString(), classification: "LIVE_CURRENT", observedAt,
+          source: item.gasLimit ? "Binance transaction build" : "Binance gas-limit API" });
         total += units;
         const builtPrice = item.maxFeePerGas ?? item.gasPrice;
         const actionPrice = builtPrice && PositiveInteger.safeParse(builtPrice).success ? BigInt(builtPrice) : 0n;
@@ -56,7 +61,11 @@ export async function estimateProofGas(actions: PreflightAction[], setupActions:
         }
         if (label === "Proof") knownProofUnits += units;
       }
-      catch { missing.push(`${label} action ${index + 1}: gas limit unavailable from current wallet state`); }
+      catch {
+        missing.push(`${label} action ${index + 1}: gas limit unavailable from current wallet state`);
+        evidence.push({ action: `${label.toUpperCase()}_${index + 1}_${item.kind}_${item.tokenInLabel}`,
+          gasUnits: null, classification: "UNAVAILABLE", observedAt, source: "Current wallet state did not yield a gas limit" });
+      }
     }
     return missing.some(x => x.startsWith(`${label} action`)) ? null : total.toString();
   }
@@ -75,5 +84,5 @@ export async function estimateProofGas(actions: PreflightAction[], setupActions:
     estimatedProofCostBNB: proofCost, estimatedSetupCostBNB: setupCost,
     recommendedProofGasReserveBNB: proofCost !== null ? decimalText(new Decimal(proofCost).mul(2)) : null,
     recommendedTotalGasReserveBNB: total, provisionalTechnicalReserveBNB: provisional,
-    complete: missing.length === 0 && total !== null };
+    complete: missing.length === 0 && total !== null, evidence };
 }

@@ -73,5 +73,9 @@
     ],
     "marketUnderlyingBalanceBeforeRaw": "1490553133211570266010",
     "marketUnderlyingBalanceAfterRaw": "1491653079679032873798"
+  },
+  "gas": {
+    "gasUsed": "282660",
+    "effectiveGasPriceWei": "50000000"
   }
 }
