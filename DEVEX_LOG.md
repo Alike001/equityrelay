@@ -299,3 +299,14 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Classify each action as `LIVE_CURRENT`, `HISTORICAL_CANONICAL`, `PROXY`, or `UNAVAILABLE`, and keep the aggregate reserve labeled as planning evidence.
 - **Suggested improvement:** Allow gas estimation against an ordered simulated state or return a documented conservative gas limit without requiring the wallet to already hold/approve intermediate assets.
 - **Evidence:** Live authenticated read-only Binance calls on 2026-10-01; no transaction submitted.
+
+### 2026-10-01 17:55 WAT — Binance route quotes unavailable from Vercel while identical local calls pass
+
+- **API / surface:** Binance Web3 RWA discovery and Trading quote flow behind the production Vercel `/api/route/preview` route.
+- **Attempt:** Verify the deployed config-driven NVDA, SPCX and TSLA previews with the same public quote-context wallet and request bodies used against the final local production build.
+- **Expected:** The two-leg read-only quote flow returns a deterministic PASS or BLOCKED result for each supported asset.
+- **Actual:** All three Vercel requests returned HTTP 200 with fail-closed `UNAVAILABLE` results and Binance business code `40304`. Immediately afterward, the identical requests against the local production build succeeded: NVDA, SPCX and TSLA all returned PASS. This isolates the observed difference to the production environment or its Binance API access path; it does not establish the precise provider-side cause.
+- **Error/code:** `40304` (`Service not available`).
+- **Workaround:** None applied. Keep production previews unavailable and do not substitute dated or local results. Resolve Binance access for the Vercel execution region or deploy the server-side Binance adapter in a supported environment before treating production previews as live-ready.
+- **Suggested improvement:** Return a structured availability reason that distinguishes credentials, region/IP policy, maintenance and rate limiting instead of the generic `40304` response.
+- **Evidence:** Production and local authenticated read-only calls on 2026-10-01; no transaction submitted.
