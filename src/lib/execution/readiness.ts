@@ -6,6 +6,28 @@ import type { QuoteSnapshot } from "@/types/route";
 
 // This is an EquityRelay review window, not an asserted Binance quote TTL.
 export const MAX_REVIEW_QUOTE_AGE_MS = 30_000;
+export const MAX_CONFIRMATION_TTL_MS = 2 * 60_000;
+
+export function quoteForAction(session: import("@/types/execution").ExecutionSession, action: ExecutionActionV1): QuoteSnapshot | null {
+  if (action.stage.startsWith("TEST_SETUP_")) return session.testSetup?.quote ?? null;
+  if (action.stage.startsWith("LEG1_")) return session.initialQuote;
+  if (action.stage.startsWith("LEG2_")) return session.freshLeg2;
+  if (action.stage.startsWith("EXIT_")) return session.recovery?.freshExitQuote ?? null;
+  return null;
+}
+
+export function confirmationExpiryForAction(session: import("@/types/execution").ExecutionSession, action: ExecutionActionV1,
+  now = new Date()): Date {
+  const normalExpiry = now.getTime() + MAX_CONFIRMATION_TTL_MS;
+  const quote = quoteForAction(session, action);
+  if (!quote) return new Date(normalExpiry);
+  requireCurrentQuote(quote, action.planIdentity, now);
+  const observedExpiry = Date.parse(quote.observedAt) + MAX_REVIEW_QUOTE_AGE_MS;
+  const providerExpiry = quote.expiresAt ? Date.parse(quote.expiresAt) : Number.POSITIVE_INFINITY;
+  const clipped = Math.min(normalExpiry, observedExpiry, providerExpiry);
+  if (!Number.isFinite(clipped) || clipped <= now.getTime()) throw new Error("QUOTE_REFRESH_REQUIRED");
+  return new Date(clipped);
+}
 export function requireCurrentQuote(quote: QuoteSnapshot | null, planIdentity: string, now = new Date()): void {
   if (!quote?.quoteId || quote.quoteId !== planIdentity || !Number.isFinite(Date.parse(quote.observedAt)) ||
       now.getTime() - Date.parse(quote.observedAt) > MAX_REVIEW_QUOTE_AGE_MS ||

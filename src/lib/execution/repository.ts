@@ -7,7 +7,7 @@ import { requireStepOrder } from "@/domain/execution/step-order";
 import { recordConfirmation } from "@/domain/execution/lifecycle";
 import { recoveryAfterProductStop, reserveRecoveryConfirmation } from "@/domain/execution/recovery";
 import { reserveTestSetup } from "@/domain/execution/test-setup";
-import { requireActionReadiness, requireCurrentQuote } from "@/lib/execution/readiness";
+import { confirmationExpiryForAction, quoteForAction, requireActionReadiness, requireCurrentQuote } from "@/lib/execution/readiness";
 import { executionPool, transaction } from "@/lib/db/pool";
 import type { ExecutionSession } from "@/types/execution";
 import { findReservedTransaction } from "./lost-hash";
@@ -89,7 +89,8 @@ export async function issueConfirmation(routeId: string, wallet: string, stage: 
   if (candidate.rowCount !== 1) throw new Error("STEP_NOT_REVIEW_READY");
   const session = candidate.rows[0].session_snapshot as ExecutionSession;
   const action = candidate.rows[0].action_v1 as ExecutionActionV1;
-  if (action.kind === "SWAP") requireCurrentQuote(stage.startsWith("TEST_SETUP") ? session.testSetup?.quote ?? null : stage.startsWith("LEG1") ? session.initialQuote : stage.startsWith("LEG2") ? session.freshLeg2 : session.recovery?.freshExitQuote ?? null, action.planIdentity);
+  const quote = quoteForAction(session, action);
+  if (quote) requireCurrentQuote(quote, action.planIdentity);
   if (action.kind === "DEPOSIT" && (!session.venus?.investable || action.planIdentity !== session.venus.investmentId)) throw new Error("VENUS_REDISCOVERY_REQUIRED");
   const gas = candidate.rows[0].recommended_gas as { gasLimit?: string } | null;
   await requireActionReadiness(action, gas?.gasLimit ?? "");
@@ -106,19 +107,21 @@ export async function issueConfirmation(routeId: string, wallet: string, stage: 
     const session = current.rows[0].session_snapshot as ExecutionSession;
     const confirmed = await client.query("SELECT stage FROM execution_steps WHERE route_id=$1 AND status='CONFIRMED'", [routeId]);
     requireStepOrder(session, action, new Set(confirmed.rows.map(row => String(row.stage))));
+    const expiresAt = confirmationExpiryForAction(session, action);
     const { token, intent } = createConfirmationIntent({ routeId, wallet: wallet.toLowerCase(), stage,
       actionHash: step.rows[0].action_hash, routeVersion: Number(route.rows[0].version), idempotencyKey,
-      expiresAt: new Date(Date.now() + 2 * 60_000).toISOString() });
+      expiresAt: expiresAt.toISOString() });
     await client.query(`INSERT INTO confirmation_intents(intent_id,token_hash,route_id,wallet,stage,action_hash,route_version,idempotency_key,expires_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [intent.id,intent.tokenHash,routeId,wallet.toLowerCase(),stage,intent.actionHash,intent.routeVersion,idempotencyKey,intent.expiresAt]);
     return { token, routeVersion: intent.routeVersion, step: { id: step.rows[0].step_id, stage, status: "REVIEW_READY", action, actionHash: intent.actionHash, txHash: null } };
   });
 }
-export async function reserveConfirmation(input: { routeId: string; wallet: string; stage: ExecutionActionV1["stage"]; token: string; actionHash: string; routeVersion: number }): Promise<void> {
+export async function reserveConfirmation(input: { routeId: string; wallet: string; stepId?: string; stage: ExecutionActionV1["stage"]; token: string; actionHash: string; routeVersion: number }): Promise<void> {
   await transaction(async client => {
     const route = await client.query("SELECT version,session_snapshot FROM execution_routes WHERE route_id=$1 AND wallet=$2 FOR UPDATE", [input.routeId,input.wallet.toLowerCase()]);
     if (route.rowCount !== 1 || Number(route.rows[0].version) !== input.routeVersion) throw new Error("ROUTE_VERSION_CONFLICT");
-    const step = await client.query("SELECT step_id,action_v1 FROM execution_steps WHERE route_id=$1 AND stage=$2 AND status='REVIEW_READY' FOR UPDATE", [input.routeId,input.stage]);
+    const step = await client.query(`SELECT step_id,action_v1 FROM execution_steps WHERE route_id=$1 AND stage=$2
+      AND status='REVIEW_READY' AND ($3::uuid IS NULL OR step_id=$3::uuid) FOR UPDATE`, [input.routeId,input.stage,input.stepId ?? null]);
     if (step.rowCount !== 1 || executionActionHash(step.rows[0].action_v1 as ExecutionActionV1) !== input.actionHash) throw new Error("ACTION_HASH_MISMATCH");
     const session = route.rows[0].session_snapshot as ExecutionSession;
     const confirmed = await client.query("SELECT stage FROM execution_steps WHERE route_id=$1 AND status='CONFIRMED'", [input.routeId]);

@@ -56,8 +56,9 @@ export async function acceptReportedHash(routeId: string, wallet: Address, stepI
   });
 }
 
-export async function reconcileStoredStep(routeId: string, stepId: string): Promise<"PENDING" | "FAILED" | "CONFIRMED"> {
-  const candidate = await executionPool().query("SELECT action_v1,action_hash,tx_hash,status FROM execution_steps WHERE route_id=$1 AND step_id=$2", [routeId,stepId]);
+export async function reconcileStoredStep(routeId: string, wallet: Address, stepId: string): Promise<"PENDING" | "FAILED" | "CONFIRMED"> {
+  const candidate = await executionPool().query(`SELECT s.action_v1,s.action_hash,s.tx_hash,s.status FROM execution_steps s
+    JOIN execution_routes r ON r.route_id=s.route_id WHERE s.route_id=$1 AND s.step_id=$2 AND r.wallet=$3`, [routeId,stepId,wallet.toLowerCase()]);
   if (candidate.rowCount !== 1) throw new Error("STEP_NOT_FOUND");
   const row = candidate.rows[0] as { action_v1: ExecutionActionV1; action_hash: string; tx_hash: Hex | null; status: string };
   if (row.status === "CONFIRMED") return "CONFIRMED";
@@ -73,7 +74,7 @@ export async function reconcileStoredStep(routeId: string, stepId: string): Prom
       from: evidence.from, to: evidence.to, confirmedAt: evidence.confirmedAt,
       tokenTransfers: evidence.transfers.map(x => ({ ...x, logIndex: x.logIndex })) } satisfies ConfirmedTransaction;
   return transaction(async client => {
-    const route = await client.query("SELECT session_snapshot FROM execution_routes WHERE route_id=$1 FOR UPDATE", [routeId]);
+    const route = await client.query("SELECT session_snapshot FROM execution_routes WHERE route_id=$1 AND wallet=$2 FOR UPDATE", [routeId,wallet.toLowerCase()]);
     const current = await client.query("SELECT status,tx_hash,action_hash FROM execution_steps WHERE step_id=$1 AND route_id=$2 FOR UPDATE", [stepId,routeId]);
     if (route.rowCount !== 1 || current.rowCount !== 1 || current.rows[0].action_hash !== row.action_hash ||
         current.rows[0].tx_hash?.toLowerCase() !== row.tx_hash?.toLowerCase()) throw new Error("CONCURRENT_STEP_CONFLICT");

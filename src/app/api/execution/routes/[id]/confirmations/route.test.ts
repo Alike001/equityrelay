@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ session: vi.fn(), issue: vi.fn(), reserve: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: vi.fn(), issue: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "opaque" }) }) }));
 vi.mock("@/lib/auth/siwe", () => ({ sessionCookie: "equityrelay_session", requireSameOrigin: () => {}, sessionWallet: mocks.session }));
-vi.mock("@/lib/execution/repository", () => ({ issueConfirmation: mocks.issue, reserveConfirmation: mocks.reserve }));
+vi.mock("@/lib/execution/repository", () => ({ issueConfirmation: mocks.issue }));
 import { POST } from "./route";
 
 const id = "11111111-1111-4111-8111-111111111111", wallet = "0x1111111111111111111111111111111111111111";
@@ -26,12 +26,10 @@ describe("authenticated durable confirmation API", () => {
     expect(response.status).toBe(409);
     expect(mocks.issue).not.toHaveBeenCalled();
   });
-  it("reserves the exact token/hash/version tuple without broadcasting", async () => {
+  it("does not expose the old reserve operation that bypassed final action delivery checks", async () => {
     const body = { operation: "RESERVE", stage: "EXIT_SWAP", token: "z".repeat(40), actionHash: `0x${"b".repeat(64)}`, routeVersion: 8 };
     const response = await POST(request(body), context);
-    expect(response.status).toBe(200);
-    expect(mocks.reserve).toHaveBeenCalledWith({ routeId: id, wallet, stage: "EXIT_SWAP", token: body.token,
-      actionHash: body.actionHash, routeVersion: 8 });
-    expect(await response.json()).toMatchObject({ state: "AWAITING_WALLET_TX", executionArmed: false });
+    expect(response.status).toBe(409);
+    expect(mocks.issue).not.toHaveBeenCalled();
   });
 });
