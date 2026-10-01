@@ -36,7 +36,9 @@ function RouteEvidence({ decision }: { decision: RouteDecision }) {
 
 function Result({ result, onPreflight, preflightLoading }: { result: PreviewResult; onPreflight: () => void; preflightLoading: boolean }) {
   if (result.kind !== "decision") return <section className={`result-panel ${result.state === "UNAVAILABLE" ? "unavailable" : "blocked"}`} role="status" aria-live="polite">
-    <div className="eyebrow">ROUTE PREVIEW</div><h2>{result.state}</h2><p>{result.message}</p><span className="reason">{result.reasons.join(" · ")}</span>
+    <div className="eyebrow">ROUTE PREVIEW</div><h2>{result.state}</h2><p>{result.message}</p>
+    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{result.state === "UNAVAILABLE" ? "Unavailable · live route" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>EXECUTION VERIFICATION</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Verified" : "Pending · preview only"}</strong></span></div>
+    <span className="reason">{result.reasons.join(" · ")}</span>
   </section>;
   const pass = result.state === "PASS";
   return <section className={`result-panel ${pass ? "passed" : "blocked"}`} aria-live="polite">
@@ -100,7 +102,8 @@ export function RoutePreviewForm() {
       if (!response.ok) { setError(body.message ?? "Check your route details and try again."); return; }
       setResult(body as PreviewResult);
       setLastIntent(intent);
-    } catch { setResult({ kind: "unavailable", state: "UNAVAILABLE", reasons: ["UNAVAILABLE_API"], message: "The route service is unavailable. No result was assumed." }); }
+    } catch { setResult({ kind: "unavailable", state: "UNAVAILABLE", underlying, displayName: selectedAsset.name,
+      executionVerifierStatus: selectedAsset.execution, reasons: ["UNAVAILABLE_API"], message: "The route service is unavailable. No result was assumed." }); }
     finally { setLoading(false); }
   }
 
@@ -110,7 +113,7 @@ export function RoutePreviewForm() {
       <div className="step-label"><span>01</span>Choose an asset</div>
       <div className="asset-selector" role="radiogroup" aria-label="Supported asset">
         {assets.map(asset => <button key={asset.underlying} type="button" role="radio" aria-checked={underlying === asset.underlying} className={underlying === asset.underlying ? "selected" : ""} onClick={() => { setUnderlying(asset.underlying); invalidate(); }}>
-          <span className="asset-icon">{asset.icon}</span><span><strong>{asset.name}</strong><small>{asset.symbol} · {asset.execution === "VALIDATED" ? "execution verified" : "preview only"}</small></span>
+          <span className="asset-icon">{asset.icon}</span><span><strong>{asset.name}</strong><small>{asset.symbol} · {asset.execution === "VALIDATED" ? "verifier validated" : "preview only"}</small></span>
         </button>)}
       </div>
       <div className="holding"><div className="stock-icon">{selectedAsset.icon}</div><div><strong>{selectedAsset.name}</strong><small>Current representation · Ondo</small></div><span className="holding-tag">BNB Chain</span></div>

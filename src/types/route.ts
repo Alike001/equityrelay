@@ -91,6 +91,9 @@ export type RouteDecision = {
 export type RouteUnavailable = {
   kind: "unavailable";
   state: "UNAVAILABLE";
+  underlying: SupportedUnderlying;
+  displayName: string;
+  executionVerifierStatus: ExecutionVerifierStatus;
   reasons: ReasonCode[];
   message: string;
 };
@@ -98,6 +101,9 @@ export type RouteUnavailable = {
 export type RouteBlocked = {
   kind: "blocked";
   state: "BLOCKED";
+  underlying: SupportedUnderlying;
+  displayName: string;
+  executionVerifierStatus: ExecutionVerifierStatus;
   reasons: ReasonCode[];
   message: string;
 };
