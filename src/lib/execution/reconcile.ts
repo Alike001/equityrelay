@@ -12,6 +12,7 @@ import { observeCanonicalTransaction } from "@/lib/execution/canonical";
 import { persistRoundTripReceipt } from "@/lib/execution/round-trip-receipt";
 import type { ConfirmationBoundary, ConfirmedTransaction, ExecutionSession, TransactionObservation } from "@/types/execution";
 import type { Address } from "@/types/route";
+import { assertActionMatchesEquity } from "@/domain/execution/asset-binding";
 
 function boundary(stage: ExecutionActionV1["stage"]): ConfirmationBoundary {
   if (stage.startsWith("LEG1")) return "LEAVE_ONDO";
@@ -27,11 +28,13 @@ function observationKey(stage: ExecutionActionV1["stage"]): "APPROVAL" | "SWAP" 
 
 // A browser hash is a lookup hint. The chain transaction must match the persisted action before recording it.
 export async function acceptReportedHash(routeId: string, wallet: Address, stepId: string, hash: Hex): Promise<void> {
-  const candidate = await executionPool().query(`SELECT s.action_v1,s.action_hash,s.status,s.tx_hash,r.wallet
+  const candidate = await executionPool().query(`SELECT s.action_v1,s.action_hash,s.status,s.tx_hash,r.wallet,r.session_snapshot
     FROM execution_steps s JOIN execution_routes r ON r.route_id=s.route_id
     WHERE s.step_id=$1 AND s.route_id=$2 AND r.wallet=$3`, [stepId,routeId,wallet.toLowerCase()]);
   if (candidate.rowCount !== 1) throw new Error("STEP_NOT_FOUND");
-  const row = candidate.rows[0] as { action_v1: ExecutionActionV1; action_hash: string; status: string; tx_hash: string | null; wallet: string };
+  const row = candidate.rows[0] as { action_v1: ExecutionActionV1; action_hash: string; status: string; tx_hash: string | null;
+    wallet: string; session_snapshot: ExecutionSession };
+  assertActionMatchesEquity(row.session_snapshot.intent.underlying, row.action_v1);
   if (row.tx_hash?.toLowerCase() === hash.toLowerCase()) return;
   if (row.status !== "AWAITING_WALLET_TX" || executionActionHash(row.action_v1) !== row.action_hash) throw new Error("ACTION_RESERVATION_REQUIRED");
   const onchain = await observeCanonicalTransaction(hash, row.action_v1);
@@ -57,10 +60,12 @@ export async function acceptReportedHash(routeId: string, wallet: Address, stepI
 }
 
 export async function reconcileStoredStep(routeId: string, wallet: Address, stepId: string): Promise<"PENDING" | "FAILED" | "CONFIRMED"> {
-  const candidate = await executionPool().query(`SELECT s.action_v1,s.action_hash,s.tx_hash,s.status FROM execution_steps s
+  const candidate = await executionPool().query(`SELECT s.action_v1,s.action_hash,s.tx_hash,s.status,r.session_snapshot FROM execution_steps s
     JOIN execution_routes r ON r.route_id=s.route_id WHERE s.route_id=$1 AND s.step_id=$2 AND r.wallet=$3`, [routeId,stepId,wallet.toLowerCase()]);
   if (candidate.rowCount !== 1) throw new Error("STEP_NOT_FOUND");
-  const row = candidate.rows[0] as { action_v1: ExecutionActionV1; action_hash: string; tx_hash: Hex | null; status: string };
+  const row = candidate.rows[0] as { action_v1: ExecutionActionV1; action_hash: string; tx_hash: Hex | null; status: string;
+    session_snapshot: ExecutionSession };
+  assertActionMatchesEquity(row.session_snapshot.intent.underlying, row.action_v1);
   if (row.status === "CONFIRMED") return "CONFIRMED";
   if (!row.tx_hash || !["SUBMITTED", "PENDING"].includes(row.status) || executionActionHash(row.action_v1) !== row.action_hash)
     throw new Error("SUBMITTED_STEP_REQUIRED");

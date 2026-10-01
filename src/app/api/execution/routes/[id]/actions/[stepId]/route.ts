@@ -26,7 +26,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     parsed = Input.parse(await request.json());
     const delivered = await deliverWalletAction({ routeId: ids.id, stepId: ids.stepId, wallet, stage: parsed.stage as ExecutionActionV1["stage"],
       token: parsed.confirmationToken, actionHash: parsed.actionHash, routeVersion: parsed.routeVersion });
-    return Response.json({ ...delivered, state: "READY_FOR_WALLET_REVIEW", executionArmed: false }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ ...delivered, state: "READY_FOR_WALLET_REVIEW", executionArmed: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof Error ? error.message : "ACTION_DELIVERY_UNAVAILABLE";
     if (code === "QUOTE_REFRESH_REQUIRED" && wallet && ids && parsed) {
@@ -36,7 +36,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         return Response.json({ code, state: "QUOTE_REFRESH_REQUIRED", refreshed }, { status: 409, headers: { "Cache-Control": "no-store" } });
       } catch { /* Return the deterministic refusal below. */ }
     }
-    const status = code === "EXECUTION_DATABASE_UNAVAILABLE" || code === "BSC_RPC_UNAVAILABLE" ? 503 : 409;
+    const status = code === "MAINNET_EXECUTION_NOT_ARMED" ? 423 :
+      code === "EXECUTION_DATABASE_UNAVAILABLE" || code === "BSC_RPC_UNAVAILABLE" ? 503 : 409;
     return Response.json({ code }, { status, headers: { "Cache-Control": "no-store" } });
   }
 }

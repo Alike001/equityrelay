@@ -24,7 +24,13 @@ describe("authenticated wallet action delivery", () => {
     const response = await POST(request(body),context);
     expect(response.status).toBe(200);
     expect(mocks.deliver).toHaveBeenCalledWith({ routeId,stepId,wallet,stage:"LEG1_SWAP",token:body.confirmationToken,actionHash,routeVersion:4 });
-    expect(await response.json()).toMatchObject({ state: "READY_FOR_WALLET_REVIEW", executionArmed: false });
+    expect(await response.json()).toMatchObject({ state: "READY_FOR_WALLET_REVIEW", executionArmed: true });
+  });
+  it("reports the server execution arm refusal before any wallet action is returned", async () => {
+    mocks.deliver.mockRejectedValue(new Error("MAINNET_EXECUTION_NOT_ARMED"));
+    const response = await POST(request(body),context);
+    expect(response.status).toBe(423);
+    expect(await response.json()).toEqual({ code: "MAINNET_EXECUTION_NOT_ARMED" });
   });
   it.each(["to","data","value","token","approvalAmount","spender","quoteId"])("rejects browser semantic field %s", async field => {
     const response = await POST(request({ ...body,[field]:"forged" }),context);

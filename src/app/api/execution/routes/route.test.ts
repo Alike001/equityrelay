@@ -47,6 +47,17 @@ describe("authenticated execution route creation", () => {
     expect(mocks.preview).toHaveBeenCalledWith({ ...intent, underlying, takerAddress: wallet });
     expect(mocks.create).toHaveBeenCalled();
   });
+  it("fails closed when a validated asset has no current live route", async () => {
+    vi.clearAllMocks();
+    mocks.session.mockResolvedValue(wallet);
+    mocks.preview.mockResolvedValue({ kind: "unavailable", state: "UNAVAILABLE", underlying: "TSLA", displayName: "Tesla",
+      executionVerifierStatus: "VALIDATED", reasons: ["UNAVAILABLE_API"], message: "Binance route data is unavailable (40374)." });
+    const response = await POST(request({ ...intent, underlying: "TSLA" }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "ROUTE_POLICY_NOT_PASS", preview: { state: "UNAVAILABLE" } });
+    expect(mocks.begin).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   it("rejects an unsupported ticker", async () => {
     vi.clearAllMocks();
     mocks.session.mockResolvedValue(wallet);

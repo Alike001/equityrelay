@@ -9,6 +9,8 @@ import { reserveConfirmation } from "@/lib/execution/repository";
 import { discoverVenusInvestment } from "@/lib/binance/defi";
 import type { ExecutionSession } from "@/types/execution";
 import { assertExecutionVerifierValidated } from "@/domain/equities/registry";
+import { requireMainnetExecutionArm } from "@/domain/execution/guard";
+import { assertActionMatchesEquity } from "@/domain/execution/asset-binding";
 
 export type WalletTransactionRequest = {
   from: `0x${string}`;
@@ -24,6 +26,7 @@ export async function deliverWalletAction(input: { routeId: string; stepId: stri
   token: string; actionHash: string; routeVersion: number }): Promise<{ transaction: WalletTransactionRequest; display: {
     stage: ExecutionActionV1["stage"]; kind: ExecutionActionV1["kind"]; tokenIn: string; tokenOut: string | null;
     amountInRaw: string; approvalSpender: string | null; approvalAmountRaw: string | null; actionHash: string } }> {
+  requireMainnetExecutionArm();
   const found = await executionPool().query(`SELECT r.session_snapshot,r.version,s.action_v1,s.action_hash,s.status,s.tx_hash,s.recommended_gas,
       i.used_at,i.expires_at
     FROM execution_routes r JOIN execution_steps s ON s.route_id=r.route_id
@@ -35,6 +38,7 @@ export async function deliverWalletAction(input: { routeId: string; stepId: stri
     status: string; tx_hash: string | null; recommended_gas: { gasLimit?: string } | null; used_at: Date | null; expires_at: Date };
   const action = row.action_v1;
   assertExecutionVerifierValidated(row.session_snapshot.intent.underlying);
+  assertActionMatchesEquity(row.session_snapshot.intent.underlying, action);
   if (!sameAddress(action.from,input.wallet) || action.routeId !== input.routeId || action.stage !== input.stage ||
       row.action_hash !== input.actionHash || executionActionHash(action) !== input.actionHash || Number(row.version) !== input.routeVersion)
     throw new Error("ACTION_DELIVERY_BINDING_MISMATCH");
