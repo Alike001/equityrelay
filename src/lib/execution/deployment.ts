@@ -2,7 +2,8 @@ import "server-only";
 import { mainnetExecutionArmed } from "@/domain/execution/guard";
 
 export type ProductionReadinessConfig = { origin: string; databaseConfigured: true; rpcConfigured: true; binanceConfigured: true;
-  minConfirmations: number; requireFinalized: boolean; executionArmed: false; broadcastCodeLock: true };
+  minConfirmations: number; requireFinalized: boolean; executionArmed: boolean;
+  walletSendCodeReleased: true; deprecatedRelayLocked: true };
 
 export function productionReadinessConfig(environment: Record<string, string | undefined> = process.env): ProductionReadinessConfig {
   const origin = environment.EQUITYRELAY_PUBLIC_ORIGIN;
@@ -12,8 +13,7 @@ export function productionReadinessConfig(environment: Record<string, string | u
   if (!environment.BINANCE_W3_API_KEY || !environment.BINANCE_W3_API_SECRET) throw new Error("BINANCE_SERVER_CREDENTIALS_REQUIRED");
   const confirmations = Number(environment.BSC_MIN_CONFIRMATIONS ?? "3");
   if (!Number.isSafeInteger(confirmations) || confirmations < 1 || confirmations > 100) throw new Error("INVALID_FINALITY_POLICY");
-  if (mainnetExecutionArmed(environment)) throw new Error("EXECUTION_MUST_REMAIN_DISARMED");
   return { origin: origin.replace(/\/$/, ""), databaseConfigured: true, rpcConfigured: true, binanceConfigured: true,
     minConfirmations: confirmations, requireFinalized: environment.BSC_REQUIRE_FINALIZED === "true",
-    executionArmed: false, broadcastCodeLock: true };
+    executionArmed: mainnetExecutionArmed(environment), walletSendCodeReleased: true, deprecatedRelayLocked: true };
 }

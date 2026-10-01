@@ -14,9 +14,11 @@ export async function GET(): Promise<Response> {
     if (Number(database.rows[0]?.count) < 4) throw new Error("DEPLOYMENT_DEPENDENCY_NOT_READY");
     if (rpc.status !== "READY") return Response.json({ status: "BLOCKED", code: "RPC_VERIFICATION_UNAVAILABLE", reason: rpc.reason },
       { status: 503, headers: { "Cache-Control": "no-store" } });
-    return Response.json({ status: "READY_READ_ONLY", origin: config.origin, databaseMigrations: Number(database.rows[0].count), chainId: rpc.chainId,
+    return Response.json({ status: config.executionArmed ? "READY_ARMED" : "READY_READ_ONLY", origin: config.origin,
+      databaseMigrations: Number(database.rows[0].count), chainId: rpc.chainId,
       minConfirmations: config.minConfirmations, requireFinalized: config.requireFinalized, finalizedBlock: rpc.finalizedBlock,
-      rpcProbeBlock: rpc.probeBlock, boundedLogCount: rpc.boundedLogCount, executionArmed: false, broadcastCodeLock: true },
+      rpcProbeBlock: rpc.probeBlock, boundedLogCount: rpc.boundedLogCount, executionArmed: config.executionArmed,
+      walletSendCodeReleased: config.walletSendCodeReleased, deprecatedRelayLocked: config.deprecatedRelayLocked },
       { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ status: "BLOCKED", code: error instanceof Error ? error.message : "DEPLOYMENT_READINESS_UNAVAILABLE" },
