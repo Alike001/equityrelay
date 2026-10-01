@@ -332,3 +332,14 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Store sanitized public receipt fixtures, require exact canonical event and transfer agreement, and record archive-state unavailability explicitly. Runtime verification still performs fresh market identity and block-state reads for future transactions.
 - **Suggested improvement:** RPC providers should publish archive-state support independently from transaction/receipt/log retention and return a stable pruned-state capability code.
 - **Evidence:** Public BSC mainnet transactions and receipts on 2026-10-01; no EquityRelay transaction submitted.
+
+### 2026-10-01 18:44 WAT — TSLA production route temporarily lacks first-leg liquidity
+
+- **API / surface:** Binance Trading `/api/v1/dex/aggregator/quote` through the production `sin1` Vercel function.
+- **Attempt:** Revalidate the complete TSLAon → USDT → TSLAB → Venus preview after the regional availability fix, using read-only source sizes `0.012`, `0.015`, `0.02`, `0.03`, `0.05`, and `0.1` TSLAon.
+- **Expected:** A genuine two-leg quote and deterministic exposure-policy result, with no fallback data.
+- **Actual:** The first quote returned `40374: Insufficient liquidity for a quote. Please decrease the transaction amount or try again later` from `0.015` through `0.1`. At `0.012`, Binance returned `40375: Minimum order amount is 5 USD`. The request reached the production Binance Trading API from `sin1`; this is a current liquidity gap rather than the former Vercel-region `40304` failure.
+- **Error/code:** `40374` for the tested liquid-size range; `40375` at `0.012` TSLAon.
+- **Workaround:** None. Keep TSLA unavailable and fail closed until a fresh live quote succeeds. Historical verifier validation remains separate from current route liquidity.
+- **Suggested improvement:** Expose a structured available-size range or minimum/maximum executable amount with the quote error so clients can distinguish a temporary no-liquidity window from an unsupported pair.
+- **Evidence:** Genuine production read-only Binance responses and Vercel runtime logs on 2026-10-01; no transaction submitted.
