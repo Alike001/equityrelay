@@ -19,8 +19,8 @@ import { derivePerLegSlippagePercent } from "@/domain/preflight/validate";
 
 const POLICY_BPS = 50;
 const USDT_DECIMALS = 18;
-function intent(owner: Address, amount: string): BrowserIntent {
-  return { underlying: "NVDA", sourceRepresentation: "ondo", amount, destination: "venus", maxExposureLossBps: POLICY_BPS, takerAddress: owner };
+function intent(owner: Address, amount: string, source: RepresentationSnapshot): BrowserIntent {
+  return { underlying: source.underlying, sourceRepresentation: "ondo", amount, destination: "venus", maxExposureLossBps: POLICY_BPS, takerAddress: owner };
 }
 function unavailableCandidate(amount: string, status: CandidateResult["status"], reason: string): CandidateResult {
   return { amount, status, viable: false, retentionPercent: null, venusBuild: null, reason, quotedUsdtOutput: null, quotedNvdabOutput: null };
@@ -31,13 +31,13 @@ function reasonOf(error: unknown): string {
 
 async function candidate(owner: Address, amount: string, source: RepresentationSnapshot, target: RepresentationSnapshot, destination: DestinationSnapshot): Promise<{ result: CandidateResult; decision: RouteDecision | null; deposit?: PreflightStage }> {
   try {
-    if (!destination.investable) return { result: unavailableCandidate(amount, "DESTINATION_UNAVAILABLE", "Venus NVDAB is not investable"), decision: null };
+    if (!destination.investable) return { result: unavailableCandidate(amount, "DESTINATION_UNAVAILABLE", `Venus ${target.symbol} is not investable`), decision: null };
     const sourceRaw = toRawUnits(amount, source.decimals);
     const leg1 = await requestQuote(1, source.address, USDT_ADDRESS, sourceRaw, owner);
-    if (!leg1) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", "No NVDAon to USDT quote returned"), decision: null };
+    if (!leg1) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", `No ${source.symbol} to USDT quote returned`), decision: null };
     const leg2 = await requestQuote(2, USDT_ADDRESS, target.address, leg1.outputRaw, owner);
-    if (!leg2) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", "No USDT to NVDAB quote returned"), decision: null };
-    const decision = evaluateRoute(intent(owner, amount), { source, target, sourceRaw, leg1, leg2, destination });
+    if (!leg2) return { result: unavailableCandidate(amount, "API_UNAVAILABLE", `No USDT to ${target.symbol} quote returned`), decision: null };
+    const decision = evaluateRoute(intent(owner, amount, source), { source, target, sourceRaw, leg1, leg2, destination });
     const quotedUsdtOutput = decimalText(rawToDecimal(leg1.outputRaw, leg1.outputDecimals ?? USDT_DECIMALS));
     const quotedNvdabOutput = decimalText(rawToDecimal(leg2.outputRaw, target.decimals));
     if (decision.state !== "PASS") return { result: { amount, status: "POLICY_BLOCKED", viable: false, retentionPercent: decision.retentionPercent, venusBuild: null, reason: decision.reasons.join(", "), quotedUsdtOutput, quotedNvdabOutput }, decision };
@@ -74,9 +74,10 @@ async function sourceAcquisition(owner: Address, source: RepresentationSnapshot,
 
 export async function buildMainnetReadiness(owner: Address): Promise<ReadinessResult> {
   try {
-    const { source, target } = await discoverRepresentations();
+    // The proof-readiness surface intentionally remains the validated NVDA mainnet proof.
+    const { source, target } = await discoverRepresentations("NVDA");
     const wallet = await getProofWalletBalances(owner, source, target);
-    const destination = await discoverVenusInvestment();
+    const destination = await discoverVenusInvestment("NVDA");
     if (!destination) return { kind: "unavailable", reason: "Venus NVDAB investment was not discovered", observedAt: new Date().toISOString() };
     const decisions = new Map<string, RouteDecision>();
     const deposits = new Map<string, PreflightStage>();

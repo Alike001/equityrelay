@@ -8,17 +8,21 @@ import { BinanceApiError } from "./client";
 import { discoverRepresentations } from "./rwa";
 import { requestQuote } from "./trading";
 import { discoverVenusInvestment } from "./defi";
+import { equityConfig } from "@/domain/equities/registry";
 
 export async function buildPreview(intent: BrowserIntent): Promise<PreviewResult> {
   try {
-    const { source, target } = await discoverRepresentations();
+    const config = equityConfig(intent.underlying);
+    const { source, target } = await discoverRepresentations(intent.underlying);
     const sourceRaw = toRawUnits(intent.amount, source.decimals);
-    const leg1 = await requestQuote(1, source.address, USDT_ADDRESS, sourceRaw, intent.takerAddress);
+    const rawLeg1 = await requestQuote(1, source.address, USDT_ADDRESS, sourceRaw, intent.takerAddress);
+    const leg1 = rawLeg1 ? { ...rawLeg1, inputSymbol: source.symbol, outputSymbol: "USDT" } : null;
     if (!leg1) return { kind: "blocked", state: "BLOCKED", reasons: ["BLOCK_NO_LEG1_QUOTE"], message: "No route is available from the current representation to USDT." };
-    const leg2 = await requestQuote(2, USDT_ADDRESS, target.address, leg1.outputRaw, intent.takerAddress);
+    const rawLeg2 = await requestQuote(2, USDT_ADDRESS, target.address, leg1.outputRaw, intent.takerAddress);
+    const leg2 = rawLeg2 ? { ...rawLeg2, inputSymbol: "USDT", outputSymbol: target.symbol } : null;
     if (!leg2) return { kind: "blocked", state: "BLOCKED", reasons: ["BLOCK_NO_LEG2_QUOTE"], message: "No route is available from USDT to the Venus-compatible representation." };
-    const destination = await discoverVenusInvestment();
-    if (!destination) return { kind: "blocked", state: "BLOCKED", reasons: ["BLOCK_DESTINATION_NOT_INVESTABLE"], message: "Venus does not currently list the compatible NVIDIA representation." };
+    const destination = await discoverVenusInvestment(intent.underlying);
+    if (!destination) return { kind: "blocked", state: "BLOCKED", reasons: ["BLOCK_DESTINATION_NOT_INVESTABLE"], message: `Venus does not currently list the compatible ${config.displayName} representation.` };
     return evaluateRoute(intent, { source, target, sourceRaw, leg1, leg2, destination });
   } catch (error) {
     if (error instanceof BinanceApiError) {

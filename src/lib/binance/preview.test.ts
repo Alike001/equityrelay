@@ -6,6 +6,7 @@ vi.mock("server-only", () => ({}));
 import { buildPreview } from "./preview";
 import { signedRequest } from "./client";
 import { NVDAON_ADDRESS, NVDAB_ADDRESS, USDT_ADDRESS } from "@/domain/routing/identity";
+import { equityConfig, type SupportedUnderlying } from "@/domain/equities/registry";
 import type { BrowserIntent } from "@/types/route";
 
 const intent: BrowserIntent = { underlying: "NVDA", sourceRepresentation: "ondo", amount: "1", destination: "venus", maxExposureLossBps: 50, takerAddress: "0x1111111111111111111111111111111111111111" };
@@ -16,6 +17,18 @@ const rows = [
 const first = { fromTokenAmount: "1000000000000000000", toTokenAmount: "200000000000000000000", vendorName: "Test vendor" };
 const second = { fromTokenAmount: "200000000000000000000", toTokenAmount: "999000000000000000", vendorName: "Test vendor" };
 const investment = { investmentId: "live-id", protocolName: "Venus", binanceChainId: "56", investable: true, assetTokenList: [{ tokenAddress: NVDAB_ADDRESS, tokenSymbol: "NVDAB" }] };
+function liveRows(underlying: SupportedUnderlying, sourceRatio = "1", targetRatio = "1") {
+  const config = equityConfig(underlying);
+  return [
+    { binanceChainId: "56", underlyingTicker: underlying, platformId: "ondo", tokenSymbol: config.sourceSymbol, tokenContractAddress: config.sourceAddress, decimals: "18", tokenToShareRatio: sourceRatio, statusInfo: { openState: true } },
+    { binanceChainId: "56", underlyingTicker: underlying, platformId: "bstock", tokenSymbol: config.targetSymbol, tokenContractAddress: config.targetAddress, decimals: "18", tokenToShareRatio: targetRatio, statusInfo: { openState: true } },
+  ];
+}
+function venus(underlying: SupportedUnderlying, investable = true) {
+  const config = equityConfig(underlying);
+  return { investmentId: `live-${underlying}`, protocolName: "Venus", binanceChainId: "56", investable,
+    assetTokenList: [{ tokenAddress: config.targetAddress, tokenSymbol: config.targetSymbol }] };
+}
 type MockReply = { code?: number; msg?: string; data?: unknown };
 function reply(data: unknown): MockReply { return { code: 0, data }; }
 function queue(...responses: MockReply[]) {
@@ -56,6 +69,30 @@ describe("live preview orchestration with controlled API responses", () => {
     expect(calls[2].url).toContain(`amount=${first.toTokenAmount}`);
     expect(calls[2].url).toContain(`fromTokenAddress=${encodeURIComponent(USDT_ADDRESS)}`);
     expect(calls[2].url).toContain(`toTokenAddress=${encodeURIComponent(NVDAB_ADDRESS)}`);
+  });
+  it.each(["SPCX", "TSLA"] as const)("builds a live %s preview from its own allowlisted identities", async underlying => {
+    const config = equityConfig(underlying);
+    const assetIntent: BrowserIntent = { ...intent, underlying };
+    const calls = queue(reply(liveRows(underlying, "1.01", "1")), reply([first]), reply([second]),
+      reply({ list: [{ investmentId: `live-${underlying}`, protocolName: "Venus" }] }), reply(venus(underlying)));
+    const result = await buildPreview(assetIntent);
+    expect(result).toMatchObject({ kind: "decision", underlying, displayName: config.displayName, executionVerifierStatus: "NOT_VALIDATED" });
+    expect(calls[2].url).toContain(`toTokenAddress=${encodeURIComponent(config.targetAddress)}`);
+  });
+  it("normalizes each asset with its live source and target ratios", async () => {
+    queue(reply(liveRows("SPCX", "2", "4")), reply([first]), reply([second]),
+      reply({ list: [{ investmentId: "live-SPCX", protocolName: "Venus" }] }), reply(venus("SPCX")));
+    const result = await buildPreview({ ...intent, underlying: "SPCX" });
+    expect(result.kind).toBe("decision");
+    if (result.kind === "decision") {
+      expect(result.sourceShares).toBe("2");
+      expect(result.targetShares).toBe("3.996");
+    }
+  });
+  it("fails closed when a supported asset live identity conflicts with the registry", async () => {
+    const spcxRows = liveRows("SPCX");
+    queue(reply([{ ...spcxRows[0], tokenSymbol: "WRONG" }, spcxRows[1]]));
+    expect((await buildPreview({ ...intent, underlying: "SPCX" })).reasons).toEqual(["INVALID_EVIDENCE"]);
   });
   it("returns BLOCKED for a strict exposure policy", async () => {
     queue(reply(rows), reply([first]), reply([second]), reply({ list: [{ investmentId: "live-id", protocolName: "Venus" }] }), reply(investment));

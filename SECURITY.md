@@ -45,6 +45,10 @@ The former $2 planning cap is no longer the active assumption. The minimum teste
 
 Phase 3E adds a third client handoff stop: `requireConnectedWalletSendRelease()` always throws `PHASE3E_WALLET_SEND_DISABLED` before `eth_sendTransaction`. The selected EIP-1193 provider is checked for the authenticated account and chain 56, but no wallet transaction prompt can be opened in this release.
 
+## Multi-equity capability boundary
+
+The read-only route registry allowlists NVDA, SPCX and TSLA identities. Current Binance RWA and DeFi responses must match the configured issuer, symbol, token and Venus market identities; live ratios, status, investment IDs and investability are never taken from dated configuration. SPCX and TSLA have `executionVerifierStatus=NOT_VALIDATED`. Authenticated route creation returns `EXECUTION_VERIFIER_NOT_VALIDATED` before preview persistence, and execution lifecycle initialization, confirmation issuance, reservation, and wallet action delivery independently reject an unvalidated underlying. Only NVDA may enter durable execution preparation. All broadcast and wallet-send locks remain active for NVDA as well.
+
 ## Phase 3E action handoff
 
 - The Phase 3A `/api/route/execute` route is deprecated and permanently closed. It is not part of the release design and accepts no transaction input.

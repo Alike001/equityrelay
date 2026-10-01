@@ -79,7 +79,7 @@ export async function buildRoutePreflight(intent: BrowserIntent): Promise<Prefli
     const safety = evaluatePreflightSafety(preview, leg1.stage, leg2.stage, venus, leg1.plan, leg2.plan);
     return {
       kind: "preflight", routePolicy: "PASS",
-      routePreview: { amount: preview.amount, maxExposureLossBps: preview.maxExposureLossBps, sourceShares: preview.sourceShares, targetShares: preview.targetShares, retentionPercent: preview.retentionPercent, exposureLossPercent: preview.exposureLossPercent, observedAt: preview.observedAt },
+      routePreview: { underlying: preview.underlying, displayName: preview.displayName, executionVerifierStatus: preview.executionVerifierStatus, amount: preview.amount, maxExposureLossBps: preview.maxExposureLossBps, sourceShares: preview.sourceShares, targetShares: preview.targetShares, retentionPercent: preview.retentionPercent, exposureLossPercent: preview.exposureLossPercent, observedAt: preview.observedAt },
       leg1: leg1.stage, leg2Indicative: leg2.stage, venusDepositIndicative: venus,
       ...safety,
       authorizationSafety: [leg1.stage, leg2.stage, venus].some(stage => stage.authorizationStatus === "INVALID_APPROVAL") ? "INVALID_APPROVAL" :

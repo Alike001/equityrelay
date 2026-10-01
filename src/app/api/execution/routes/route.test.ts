@@ -36,4 +36,20 @@ describe("authenticated execution route creation", () => {
     const response = await POST(request(intent));
     expect(response.status).toBe(401);
   });
+  it.each(["SPCX", "TSLA"])("refuses preview-only %s before preview or persistence", async underlying => {
+    vi.clearAllMocks();
+    mocks.session.mockResolvedValue(wallet);
+    const response = await POST(request({ ...intent, underlying }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ code: "EXECUTION_VERIFIER_NOT_VALIDATED" });
+    expect(mocks.preview).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it("rejects an unsupported ticker", async () => {
+    vi.clearAllMocks();
+    mocks.session.mockResolvedValue(wallet);
+    const response = await POST(request({ ...intent, underlying: "AAPL" }));
+    expect(response.status).toBe(400);
+    expect(mocks.preview).not.toHaveBeenCalled();
+  });
 });

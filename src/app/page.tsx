@@ -2,9 +2,9 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/shared/site-header";
 
 const steps = [
-  ["01", "Choose a destination", "Tell us where you want your NVIDIA to work. Venus is the first supported destination."],
+  ["01", "Choose a destination", "Tell us where you want your supported tokenized equity asset to work. Venus is the first supported destination."],
   ["02", "Compile the right rail", "We resolve issuer rules, live stock ratios and the two allowed conversion legs."],
-  ["03", "Check your limit", "Projected NVIDIA-equivalent exposure is compared with the reduction you allow."],
+  ["03", "Check your limit", "Projected underlying-equivalent exposure is compared with the reduction you allow."],
   ["04", "See the decision", "A read-only preview returns PASS, BLOCKED or UNAVAILABLE with the evidence behind it."],
 ];
 

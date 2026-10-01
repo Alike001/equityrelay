@@ -19,6 +19,7 @@ const action={version:"ExecutionActionV1",routeId:"11111111-1111-4111-8111-11111
   tokenOut:"0x4444444444444444444444444444444444444444",amountInRaw:"1",approvalSpender:null,approvalAmountRaw:null,planIdentity:"quote",planRevision:"revision"} satisfies ExecutionActionV1;
 const hash=executionActionHash(action),now=new Date();
 const session={id:action.routeId,owner:wallet,stage:"LEG1_REVIEW",initialQuote:{quoteId:"quote",observedAt:now.toISOString(),expiresAt:null},
+  intent:{underlying:"NVDA",sourceRepresentation:"ondo",amount:"1",destination:"venus",maxExposureLossBps:50,takerAddress:wallet},
   originalSourceRaw:"1",reviews:{LEAVE_ONDO:{allowanceSufficient:true}},confirmations:[]} as unknown as ExecutionSession;
 function row(override:Record<string,unknown>={}){return {session_snapshot:session,version:"4",action_v1:action,action_hash:hash,status:"REVIEW_READY",
   tx_hash:null,recommended_gas:{gasLimit:"100000"},used_at:null,expires_at:new Date(Date.now()+20_000),...override};}
@@ -46,5 +47,10 @@ describe("final server action delivery",()=>{
     await expect(deliverWalletAction(input)).rejects.toThrow("ACTION_ALREADY_RESERVED_OR_SUBMITTED");
     mocks.query.mockReset().mockResolvedValueOnce({rowCount:1,rows:[row({status:"PENDING",tx_hash:`0x${"1".repeat(64)}`})]});
     await expect(deliverWalletAction(input)).rejects.toThrow("ACTION_ALREADY_RESERVED_OR_SUBMITTED");
+  });
+  it("rejects wallet action delivery for a preview-only asset even if a durable row were injected",async()=>{
+    mocks.query.mockReset().mockResolvedValueOnce({rowCount:1,rows:[row({session_snapshot:{...session,intent:{...session.intent,underlying:"SPCX"}}})]});
+    await expect(deliverWalletAction(input)).rejects.toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
+    expect(mocks.reserve).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { NVDAB_ADDRESS, sameAddress, USDT_ADDRESS, validateDestination, validate
 import type { AuthorizationReview } from "@/types/preflight";
 import type { Address, DestinationSnapshot, QuoteSnapshot, RepresentationSnapshot, RouteDecision } from "@/types/route";
 import type { ProductConfirmationBoundary, ConfirmedTransaction, ExecutionReview, ExecutionSession, ExecutionStage, SettlementEvidence, TransactionObservation, VerifiedExecutionReceipt } from "@/types/execution";
+import { assertExecutionVerifierValidated } from "@/domain/equities/registry";
 
 const raw = /^[1-9]\d*$/;
 const txHash = /^0x[a-fA-F0-9]{64}$/;
@@ -35,6 +36,7 @@ function reviewAction(review: ExecutionReview, owner: Address, token: Address, a
 }
 
 export function beginExecutionSession(id: string, owner: Address, preview: RouteDecision): ExecutionSession {
+  assertExecutionVerifierValidated(preview.underlying);
   if (preview.state !== "PASS" || !id || !sameAddress(preview.evidence.leg1.from, preview.evidence.source.address) ||
       !sameAddress(preview.evidence.leg1.to, USDT_ADDRESS) || !sameAddress(preview.evidence.leg2.from, USDT_ADDRESS) ||
       preview.evidence.leg1.outputRaw !== preview.evidence.leg2.inputRaw) throw new Error("ROUTE_POLICY_PASS_REQUIRED");

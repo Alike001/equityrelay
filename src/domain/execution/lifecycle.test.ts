@@ -23,7 +23,7 @@ function quote(leg: 1 | 2, from: Address, to: Address, inputRaw: string, outputR
   return { leg, from, to, inputRaw, outputRaw, quoteId, observedAt, expiresAt: null, vendor: null, tradeFeeUsd: null, priceImpactPercent: null, inputDecimals: 18, outputDecimals: 18 };
 }
 function preview(): RouteDecision {
-  return { kind: "decision", state: "PASS", reasons: ["PASS_ROUTE_READY"], amount: "1", maxExposureLossBps: 50, sourceShares: "1", targetShares: "0.999", retentionPercent: "99.9", exposureLossPercent: "0.1", observedAt: oldTime, expiresAt: null,
+  return { kind: "decision", state: "PASS", underlying: "NVDA", displayName: "NVIDIA", executionVerifierStatus: "VALIDATED", reasons: ["PASS_ROUTE_READY"], amount: "1", maxExposureLossBps: 50, sourceShares: "1", targetShares: "0.999", retentionPercent: "99.9", exposureLossPercent: "0.1", observedAt: oldTime, expiresAt: null,
     evidence: { sourceRaw: one,
       source: { chainId: 56, underlying: "NVDA", issuer: "ondo", symbol: "NVDAon", address: NVDAON_ADDRESS, decimals: 18, tokenToShareRatio: "1", open: true, observedAt: oldTime },
       target: { chainId: 56, underlying: "NVDA", issuer: "bstock", symbol: "NVDAB", address: NVDAB_ADDRESS, decimals: 18, tokenToShareRatio: "1", open: true, observedAt: oldTime },
@@ -60,6 +60,10 @@ function settledLeg1() { return measureSettlement(leg1Confirmed(), "LEG1", deriv
 function freshLeg2(output = "998000000000000000") { return quote(2, USDT_ADDRESS, NVDAB_ADDRESS, actualUsdt, output, "fresh-second", freshTime); }
 
 describe("Phase 3A execution boundaries", () => {
+  it("refuses a preview-only asset before an execution session exists", () => {
+    const spcx = { ...preview(), underlying: "SPCX" as const, displayName: "SPCX", executionVerifierStatus: "NOT_VALIDATED" as const };
+    expect(() => beginExecutionSession("route", owner, spcx)).toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
+  });
   it("requires confirmation and confirmed approval before the first swap", () => {
     const reviewed = prepareReview(start(), review("LEAVE_ONDO", one, preview().evidence.leg1));
     expect(() => submitPlannedAction(reviewed, "LEAVE_ONDO", "SWAP", { status: "SUBMITTED", transactionHash: hash("1") })).toThrow("CONFIRMED_USER_ACTION_REQUIRED");

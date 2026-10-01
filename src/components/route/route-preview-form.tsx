@@ -5,6 +5,13 @@ import Decimal from "decimal.js";
 import type { Address, BrowserIntent, PreviewResult, RouteDecision } from "@/types/route";
 import type { PreflightResult } from "@/types/preflight";
 import { PreflightReview } from "./preflight-review";
+import type { SupportedUnderlying } from "@/domain/equities/registry";
+
+const assets: Array<{ underlying: SupportedUnderlying; name: string; symbol: string; icon: string; execution: "VALIDATED" | "NOT_VALIDATED" }> = [
+  { underlying: "NVDA", name: "NVIDIA", symbol: "NVDA", icon: "N", execution: "VALIDATED" },
+  { underlying: "TSLA", name: "Tesla", symbol: "TSLA", icon: "T", execution: "NOT_VALIDATED" },
+  { underlying: "SPCX", name: "SPCX", symbol: "SPCX", icon: "S", execution: "NOT_VALIDATED" },
+];
 
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
 const percentPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
@@ -33,10 +40,11 @@ function Result({ result, onPreflight, preflightLoading }: { result: PreviewResu
   </section>;
   const pass = result.state === "PASS";
   return <section className={`result-panel ${pass ? "passed" : "blocked"}`} aria-live="polite">
-    <div className="result-top"><div><div className="eyebrow">ROUTE READY · READ-ONLY PREVIEW</div><h2>NVIDIA <span>→</span> Venus</h2></div><div className="verdict-stack"><strong className={`status-pill ${pass ? "pass" : "block"}`}>{result.state}</strong>{pass && <small>Inside your {displayDecimal(new Decimal(result.maxExposureLossBps).div(100).toString(), 2)}% limit</small>}</div></div>
+    <div className="result-top"><div><div className="eyebrow">ROUTE READY · READ-ONLY PREVIEW</div><h2>{result.displayName} <span>→</span> Venus</h2></div><div className="verdict-stack"><strong className={`status-pill ${pass ? "pass" : "block"}`}>{result.state}</strong>{pass && <small>Inside your {displayDecimal(new Decimal(result.maxExposureLossBps).div(100).toString(), 2)}% limit</small>}</div></div>
+    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{pass ? "Route available" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>EXECUTION VERIFICATION</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Verified" : "Pending · preview only"}</strong></span></div>
     <div className="route-line" aria-label="Compiled route"><span><small>Current</small>Ondo</span><i aria-hidden="true">→</i><span><small>Settlement</small>USDT</span><i aria-hidden="true">→</i><span><small>Compatible</small>bStocks</span><i aria-hidden="true">→</i><span><small>Destination</small>Venus</span></div>
     <div className="exposure-grid">
-      <div><small>BEFORE · NVIDIA-EQUIVALENT SHARES</small><strong>{displayDecimal(result.sourceShares, 8)}</strong></div>
+      <div><small>BEFORE · {result.underlying}-EQUIVALENT SHARES</small><strong>{displayDecimal(result.sourceShares, 8)}</strong></div>
       <div><small>PROJECTED AFTER CONVERSION</small><strong>{displayDecimal(result.targetShares, 8)}</strong></div>
       <div className="retention"><small>PROJECTED EXPOSURE RETAINED</small><strong>{displayDecimal(result.retentionPercent, 4)}%</strong></div>
       <div><small>YOUR MINIMUM RETENTION</small><strong>{displayDecimal(new Decimal(100).minus(new Decimal(result.maxExposureLossBps).div(100)).toString(), 2)}%</strong></div>
@@ -49,6 +57,7 @@ function Result({ result, onPreflight, preflightLoading }: { result: PreviewResu
 }
 
 export function RoutePreviewForm() {
+  const [underlying, setUnderlying] = useState<SupportedUnderlying>("NVDA");
   const [amount, setAmount] = useState("0.25");
   const [address, setAddress] = useState("");
   const [maxLoss, setMaxLoss] = useState("0.50");
@@ -58,6 +67,7 @@ export function RoutePreviewForm() {
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [lastIntent, setLastIntent] = useState<BrowserIntent | null>(null);
+  const selectedAsset = assets.find(asset => asset.underlying === underlying)!;
 
   function invalidate() { setResult(null); setPreflight(null); setLastIntent(null); }
 
@@ -80,7 +90,7 @@ export function RoutePreviewForm() {
     try { bps = new Decimal(maxLoss).mul(100).toNumber(); if (!Number.isInteger(bps) || bps < 0 || bps > 10000) throw new Error(); }
     catch { setError("Enter a maximum exposure reduction between 0% and 100%."); return; }
     setLoading(true);
-    const intent: BrowserIntent = { underlying: "NVDA", sourceRepresentation: "ondo", amount, destination: "venus", maxExposureLossBps: bps, takerAddress: address as Address };
+    const intent: BrowserIntent = { underlying, sourceRepresentation: "ondo", amount, destination: "venus", maxExposureLossBps: bps, takerAddress: address as Address };
     try {
       const response = await fetch("/api/route/preview", {
         method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
@@ -96,18 +106,23 @@ export function RoutePreviewForm() {
 
   return <><div className="app-grid">
     <form className="route-form" onSubmit={submit}>
-      <div className="form-intro"><div className="eyebrow">BUILD A ROUTE · BNB CHAIN</div><h1>Where should your stock go?</h1><p>Start with the NVIDIA you hold. We’ll find the representation Venus accepts and check the conversion against your limit.</p></div>
-      <div className="step-label"><span>01</span>Your stock</div>
-      <div className="holding"><div className="stock-icon">N</div><div><strong>NVIDIA</strong><small>Current representation · Ondo</small></div><span className="holding-tag">BNB Chain</span></div>
-      <label className="field-label" htmlFor="stock-amount">Amount of your current NVIDIA representation</label>
+      <div className="form-intro"><div className="eyebrow">BUILD A ROUTE · BNB CHAIN</div><h1>Where should your asset go?</h1><p>Choose a supported tokenized equity asset. We’ll find the representation Venus accepts and check the conversion against your limit.</p></div>
+      <div className="step-label"><span>01</span>Choose an asset</div>
+      <div className="asset-selector" role="radiogroup" aria-label="Supported asset">
+        {assets.map(asset => <button key={asset.underlying} type="button" role="radio" aria-checked={underlying === asset.underlying} className={underlying === asset.underlying ? "selected" : ""} onClick={() => { setUnderlying(asset.underlying); invalidate(); }}>
+          <span className="asset-icon">{asset.icon}</span><span><strong>{asset.name}</strong><small>{asset.symbol} · {asset.execution === "VALIDATED" ? "execution verified" : "preview only"}</small></span>
+        </button>)}
+      </div>
+      <div className="holding"><div className="stock-icon">{selectedAsset.icon}</div><div><strong>{selectedAsset.name}</strong><small>Current representation · Ondo</small></div><span className="holding-tag">BNB Chain</span></div>
+      <label className="field-label" htmlFor="stock-amount">Amount of your current {selectedAsset.symbol} representation</label>
       <div className="input-shell"><input id="stock-amount" type="text" inputMode="decimal" required value={amount} onChange={e => { setAmount(e.target.value); invalidate(); }} aria-describedby="amount-hint" /><span>tokens</span></div>
       <small className="field-hint" id="amount-hint">Enter a human-readable amount. A balance is not required for a read-only quote.</small>
       <div className="step-label"><span>02</span>Your destination</div>
-      <div className="destination-choice"><div className="destination-symbol">V</div><div><strong>Use as collateral</strong><small>Venus · compatible NVIDIA rail</small></div><span className="choice-check" aria-label="Selected">✓</span></div>
+      <div className="destination-choice"><div className="destination-symbol">V</div><div><strong>Use as collateral</strong><small>Venus · compatible {selectedAsset.symbol} rail</small></div><span className="choice-check" aria-label="Selected">✓</span></div>
       <div className="step-label"><span>03</span>Your safety limit</div>
       <label className="field-label" htmlFor="max-loss">Maximum exposure reduction</label>
       <div className="input-shell percent"><input id="max-loss" type="text" inputMode="decimal" required value={maxLoss} onChange={e => { setMaxLoss(e.target.value); invalidate(); }} /><span>%</span></div>
-      <small className="field-hint">The route is blocked if projected NVIDIA-equivalent exposure reduction exceeds this limit.</small>
+      <small className="field-hint">The route is blocked if projected {selectedAsset.symbol}-equivalent exposure reduction exceeds this limit.</small>
       <label className="field-label address-label" htmlFor="taker-address">Wallet address for live quote</label>
       <input className="address-input" id="taker-address" type="text" placeholder="0x…" required value={address} onChange={e => { setAddress(e.target.value.trim()); invalidate(); }} autoComplete="off" spellCheck={false} />
       <small className="field-hint">Used only for address-specific RWA pricing. Entering an address does not connect or sign. Any later execution review is bound to the separately authenticated wallet.</small>
@@ -118,7 +133,7 @@ export function RoutePreviewForm() {
     <div className="preview-column">
       {loading ? <section className="preview-placeholder loading" role="status"><div className="eyebrow">DISCOVERING</div><div className="pulse-line" /><h2>Finding the right rail</h2><p>Checking live stock representations, two route quotes and Venus availability.</p><div className="skeleton" /><div className="skeleton short" /></section>
         : result ? <Result result={result} onPreflight={requestPreflight} preflightLoading={preflightLoading} />
-        : <section className="preview-placeholder"><div className="eyebrow">YOUR ROUTE, EXPLAINED</div><div className="diagram-circle">N<span>→</span>V</div><h2>One stock.<br />The right destination.</h2><p>Your route preview will compare NVIDIA-equivalent exposure before and after the conversion, then show a clear PASS or BLOCKED result.</p><div className="placeholder-bottom"><span>01 <b>Discover</b></span><span>02 <b>Normalize</b></span><span>03 <b>Decide</b></span></div></section>}
+        : <section className="preview-placeholder"><div className="eyebrow">YOUR ROUTE, EXPLAINED</div><div className="diagram-circle">{selectedAsset.icon}<span>→</span>V</div><h2>One asset.<br />The right destination.</h2><p>Your route preview will compare {selectedAsset.symbol}-equivalent exposure before and after the conversion, then show a clear PASS or BLOCKED result.</p><div className="placeholder-bottom"><span>01 <b>Discover</b></span><span>02 <b>Normalize</b></span><span>03 <b>Decide</b></span></div></section>}
     </div>
   </div>{preflightLoading && <section className="preflight-loading" role="status"><div className="eyebrow">READ-ONLY PREFLIGHT</div><h2>Checking the exact transaction plan</h2><p>Refreshing quotes, building unsigned actions and asking Binance to simulate where supported.</p></section>}{preflight && <PreflightReview result={preflight} />}</>;
 }

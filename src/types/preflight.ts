@@ -77,7 +77,7 @@ export type PreflightStage = {
 export type RoutePreflight = {
   kind: "preflight";
   routePolicy: "PASS";
-  routePreview: Pick<RouteDecision, "amount" | "maxExposureLossBps" | "sourceShares" | "targetShares" | "retentionPercent" | "exposureLossPercent" | "observedAt">;
+  routePreview: Pick<RouteDecision, "underlying" | "displayName" | "executionVerifierStatus" | "amount" | "maxExposureLossBps" | "sourceShares" | "targetShares" | "retentionPercent" | "exposureLossPercent" | "observedAt">;
   leg1: PreflightStage;
   leg2Indicative: PreflightStage;
   venusDepositIndicative: PreflightStage;

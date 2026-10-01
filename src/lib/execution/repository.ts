@@ -10,6 +10,7 @@ import { reserveTestSetup } from "@/domain/execution/test-setup";
 import { confirmationExpiryForAction, quoteForAction, requireActionReadiness, requireCurrentQuote } from "@/lib/execution/readiness";
 import { executionPool, transaction } from "@/lib/db/pool";
 import type { ExecutionSession } from "@/types/execution";
+import { assertExecutionVerifierValidated } from "@/domain/equities/registry";
 import { findReservedTransaction } from "./lost-hash";
 import { mainnetExecutionArmed } from "@/domain/execution/guard";
 
@@ -17,6 +18,7 @@ export type StoredRoute = { session: ExecutionSession; version: number; state: s
 export type StoredStep = { id: string; stage: ExecutionActionV1["stage"]; status: string; action: ExecutionActionV1; actionHash: string; txHash: string | null };
 
 export async function createExecutionRoute(session: ExecutionSession): Promise<void> {
+  assertExecutionVerifierValidated(session.intent.underlying);
   await executionPool().query(`INSERT INTO execution_routes(route_id,wallet,chain_id,original_intent,original_source_raw,max_exposure_loss_bps,lifecycle_state,session_snapshot)
     VALUES ($1,$2,56,$3,$4,$5,$6,$7)`, [session.id, session.owner.toLowerCase(), JSON.stringify(session.intent),
     session.originalSourceRaw, session.intent.maxExposureLossBps, session.stage, JSON.stringify(session)]);
@@ -88,6 +90,7 @@ export async function issueConfirmation(routeId: string, wallet: string, stage: 
     [routeId,wallet.toLowerCase(),stage]);
   if (candidate.rowCount !== 1) throw new Error("STEP_NOT_REVIEW_READY");
   const session = candidate.rows[0].session_snapshot as ExecutionSession;
+  assertExecutionVerifierValidated(session.intent.underlying);
   const action = candidate.rows[0].action_v1 as ExecutionActionV1;
   const quote = quoteForAction(session, action);
   if (quote) requireCurrentQuote(quote, action.planIdentity);
@@ -124,6 +127,7 @@ export async function reserveConfirmation(input: { routeId: string; wallet: stri
       AND status='REVIEW_READY' AND ($3::uuid IS NULL OR step_id=$3::uuid) FOR UPDATE`, [input.routeId,input.stage,input.stepId ?? null]);
     if (step.rowCount !== 1 || executionActionHash(step.rows[0].action_v1 as ExecutionActionV1) !== input.actionHash) throw new Error("ACTION_HASH_MISMATCH");
     const session = route.rows[0].session_snapshot as ExecutionSession;
+    assertExecutionVerifierValidated(session.intent.underlying);
     const confirmed = await client.query("SELECT stage FROM execution_steps WHERE route_id=$1 AND status='CONFIRMED'", [input.routeId]);
     requireStepOrder(session, step.rows[0].action_v1 as ExecutionActionV1, new Set(confirmed.rows.map(row => String(row.stage))));
     const consumed = await client.query(`UPDATE confirmation_intents SET used_at=now() WHERE token_hash=$1 AND route_id=$2 AND wallet=$3

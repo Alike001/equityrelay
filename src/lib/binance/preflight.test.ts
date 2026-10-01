@@ -27,7 +27,7 @@ const simulation = { status: "PASSED" as const, failReason: null, balanceChanges
 function preview(): RouteDecision {
   const observedAt = now();
   return {
-    kind: "decision", state: "PASS", reasons: ["PASS_ROUTE_READY"], amount: "1", maxExposureLossBps: 50,
+    kind: "decision", state: "PASS", underlying: "NVDA", displayName: "NVIDIA", executionVerifierStatus: "VALIDATED", reasons: ["PASS_ROUTE_READY"], amount: "1", maxExposureLossBps: 50,
     sourceShares: "1", targetShares: "0.999", retentionPercent: "99.9", exposureLossPercent: "0.1", observedAt, expiresAt: null,
     evidence: {
       sourceRaw: "1000000000000000000",

@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 import { decimalText, normalizedShares } from "@/domain/exposure/decimal";
 import { sameAddress, USDT_ADDRESS, validateDestination, validateRepresentation } from "@/domain/routing/identity";
 import type { BrowserIntent, QuoteSnapshot, ReasonCode, RepresentationSnapshot, RouteDecision, RouteEvidence } from "@/types/route";
+import { equityConfig } from "@/domain/equities/registry";
 
 const ORDER: ReasonCode[] = ["INVALID_EVIDENCE", "UNAVAILABLE_API", "BLOCK_SOURCE_STATUS", "BLOCK_TARGET_STATUS", "BLOCK_DESTINATION_NOT_INVESTABLE", "BLOCK_NO_LEG1_QUOTE", "BLOCK_NO_LEG2_QUOTE", "BLOCK_EXPOSURE_POLICY", "PARTIAL_ROUTE_STOPPED", "PASS_ROUTE_READY"];
 export function orderedReasons(reasons: ReasonCode[]): ReasonCode[] { return [...new Set(reasons)].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)); }
@@ -15,9 +16,11 @@ function validateQuote(quote: QuoteSnapshot, leg: 1 | 2, from: string, to: strin
 }
 
 export function evaluateRoute(intent: BrowserIntent, evidence: RouteEvidence): RouteDecision {
+  const config = equityConfig(intent.underlying);
   validateRepresentation(evidence.source, "source");
   validateRepresentation(evidence.target, "target");
-  validateDestination(evidence.destination);
+  if (evidence.source.underlying !== intent.underlying || evidence.target.underlying !== intent.underlying) throw new Error("INVALID_EVIDENCE");
+  validateDestination(evidence.destination, intent.underlying);
   if (!Number.isInteger(intent.maxExposureLossBps) || intent.maxExposureLossBps < 0 || intent.maxExposureLossBps > 10000) throw new Error("INVALID_POLICY");
   validateQuote(evidence.leg1, 1, evidence.source.address, USDT_ADDRESS, evidence.sourceRaw);
   validateQuote(evidence.leg2, 2, USDT_ADDRESS, evidence.target.address, evidence.leg1.outputRaw);
@@ -36,6 +39,9 @@ export function evaluateRoute(intent: BrowserIntent, evidence: RouteEvidence): R
   const expiries = [evidence.leg1.expiresAt, evidence.leg2.expiresAt].filter((x): x is string => x !== null);
   return {
     kind: "decision", state, reasons: orderedReasons(reasons), amount: intent.amount,
+    underlying: intent.underlying,
+    displayName: config.displayName,
+    executionVerifierStatus: config.executionVerifierStatus,
     maxExposureLossBps: intent.maxExposureLossBps,
     sourceShares: decimalText(source), targetShares: decimalText(target),
     retentionPercent: decimalText(retention.mul(100)), exposureLossPercent: decimalText(loss.mul(100)),

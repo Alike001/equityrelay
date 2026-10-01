@@ -8,6 +8,7 @@ import { quoteForAction, requireActionReadiness, requireCurrentQuote } from "@/l
 import { reserveConfirmation } from "@/lib/execution/repository";
 import { discoverVenusInvestment } from "@/lib/binance/defi";
 import type { ExecutionSession } from "@/types/execution";
+import { assertExecutionVerifierValidated } from "@/domain/equities/registry";
 
 export type WalletTransactionRequest = {
   from: `0x${string}`;
@@ -33,6 +34,7 @@ export async function deliverWalletAction(input: { routeId: string; stepId: stri
   const row = found.rows[0] as { session_snapshot: ExecutionSession; version: string; action_v1: ExecutionActionV1; action_hash: string;
     status: string; tx_hash: string | null; recommended_gas: { gasLimit?: string } | null; used_at: Date | null; expires_at: Date };
   const action = row.action_v1;
+  assertExecutionVerifierValidated(row.session_snapshot.intent.underlying);
   if (!sameAddress(action.from,input.wallet) || action.routeId !== input.routeId || action.stage !== input.stage ||
       row.action_hash !== input.actionHash || executionActionHash(action) !== input.actionHash || Number(row.version) !== input.routeVersion)
     throw new Error("ACTION_DELIVERY_BINDING_MISMATCH");

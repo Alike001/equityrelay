@@ -1,3 +1,5 @@
+import type { ExecutionVerifierStatus, SupportedUnderlying } from "@/domain/equities/registry";
+
 export type Address = `0x${string}`;
 export type ReasonCode =
   | "PASS_ROUTE_READY"
@@ -12,7 +14,7 @@ export type ReasonCode =
   | "PARTIAL_ROUTE_STOPPED";
 
 export type BrowserIntent = {
-  underlying: "NVDA";
+  underlying: SupportedUnderlying;
   sourceRepresentation: "ondo";
   amount: string;
   destination: "venus";
@@ -22,9 +24,9 @@ export type BrowserIntent = {
 
 export type RepresentationSnapshot = {
   chainId: 56;
-  underlying: "NVDA";
+  underlying: SupportedUnderlying;
   issuer: "ondo" | "bstock";
-  symbol: "NVDAon" | "NVDAB";
+  symbol: string;
   address: Address;
   decimals: number;
   tokenToShareRatio: string;
@@ -40,6 +42,8 @@ export type QuoteSnapshot = {
   outputRaw: string;
   inputDecimals?: number | null;
   outputDecimals?: number | null;
+  inputSymbol?: string | null;
+  outputSymbol?: string | null;
   vendor: string | null;
   quoteId: string | null;
   tradeFeeUsd: string | null;
@@ -69,6 +73,9 @@ export type RouteEvidence = {
 export type RouteDecision = {
   kind: "decision";
   state: "PASS" | "BLOCKED";
+  underlying: SupportedUnderlying;
+  displayName: string;
+  executionVerifierStatus: ExecutionVerifierStatus;
   reasons: ReasonCode[];
   amount: string;
   maxExposureLossBps: number;

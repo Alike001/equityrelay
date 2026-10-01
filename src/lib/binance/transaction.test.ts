@@ -7,13 +7,15 @@ import { buildSwapTransaction } from "./swap-build";
 import { simulateEvmTransaction } from "./simulation";
 import { buildVenusDeposit } from "./defi-transaction";
 import { BrowserIntentSchema } from "@/lib/intent";
-import { NVDAON_ADDRESS, NVDAB_ADDRESS, USDT_ADDRESS } from "@/domain/routing/identity";
+import { NVDAON_ADDRESS, NVDAB_ADDRESS, USDT_ADDRESS, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
 import type { QuoteSnapshot } from "@/types/route";
+import { equityConfig } from "@/domain/equities/registry";
 
 const owner = "0x1111111111111111111111111111111111111111" as const;
 const router = "0x2222222222222222222222222222222222222222" as const;
 const spender = router;
 const approveData = (amount: bigint) => `0x095ea7b3${spender.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
+const venusApproveData = (amount: bigint) => `0x095ea7b3${VENUS_VNVDAB_ADDRESS.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
 const quote = (): QuoteSnapshot => ({ leg: 1, from: NVDAON_ADDRESS, to: USDT_ADDRESS, inputRaw: "100", outputRaw: "99", quoteId: "fresh-id", vendor: "vendor", tradeFeeUsd: null, priceImpactPercent: null, observedAt: new Date().toISOString(), expiresAt: null });
 const destination = { protocol: "Venus" as const, chainId: 56 as const, investmentId: "live-id", assetAddress: NVDAB_ADDRESS, investable: true, observedAt: new Date().toISOString() };
 const target = { chainId: 56 as const, underlying: "NVDA" as const, issuer: "bstock" as const, symbol: "NVDAB" as const, address: NVDAB_ADDRESS, decimals: 18, tokenToShareRatio: "1", open: true, observedAt: new Date().toISOString() };
@@ -76,8 +78,8 @@ describe("read-only transaction builders", () => {
     expect(result.actions.map(x => x.kind)).toEqual(["SWAP"]);
   });
   it("rejects Venus approval token, spender and native-value mismatches", async () => {
-    const deposit = { callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678" };
-    const build = (approve: object) => envelope({ dataList: [{ callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: approveData(100n), ...approve }, deposit] });
+    const deposit = { callDataType: "DEPOSIT", from: owner, to: VENUS_VNVDAB_ADDRESS, value: "0x0", data: "0x12345678" };
+    const build = (approve: object) => envelope({ dataList: [{ callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: venusApproveData(100n), ...approve }, deposit] });
     queue(build({ to: USDT_ADDRESS }));
     await expect(buildVenusDeposit(owner, destination, target, "100")).rejects.toThrow("APPROVAL_TOKEN_MISMATCH");
     vi.unstubAllGlobals();
@@ -99,12 +101,13 @@ describe("read-only transaction builders", () => {
   });
   it("preserves ordered Venus APPROVE then DEPOSIT, hex value, decimal gas and warnings", async () => {
     const calls = queue(envelope({ dataList: [
-      { callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: approveData(100n), gasLimit: "74142", maxFeePerGas: "57014496" },
-      { callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678", gasLimit: "150000", maxFeePerGas: "57014496" },
+      { callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: venusApproveData(100n), gasLimit: "74142", maxFeePerGas: "57014496" },
+      { callDataType: "DEPOSIT", from: owner, to: VENUS_VNVDAB_ADDRESS, value: "0x0", data: "0x12345678", gasLimit: "150000", maxFeePerGas: "57014496" },
     ], preview: { success: true, balanceChange: [{ tokenSymbol: "NVDAB", amount: "-0.0000000000000001" }], feeAndContract: { estimatedNetworkFee: { amount: "0.0001", tokenSymbol: "BNB" } }, healthFactor: { before: "2", after: "2.1" }, warnings: [{ code: "HEALTH_FACTOR_WARNING", message: "Watch risk" }] } }));
     const result = await buildVenusDeposit(owner, destination, target, "100");
     expect(result.actions.map(x => x.kind)).toEqual(["APPROVAL", "DEPOSIT"]);
-    expect(result.actions[0]).toMatchObject({ valueWei: "0", gasLimit: "74142", maxFeePerGas: "57014496", approvalSpender: spender });
+    expect(result.actions[0]).toMatchObject({ valueWei: "0", gasLimit: "74142", maxFeePerGas: "57014496" });
+    expect(result.actions[0].approvalSpender?.toLowerCase()).toBe(VENUS_VNVDAB_ADDRESS.toLowerCase());
     expect(result.simulationStatus).toBe("PASSED");
     expect(result.previewDetails?.estimatedNetworkFee).toBe("0.0001 BNB");
     expect(result.actions[0].simulation.warnings).toContain("HEALTH_FACTOR_WARNING · Watch risk");
@@ -112,16 +115,16 @@ describe("read-only transaction builders", () => {
   });
   it("retries build-only after an explicit wallet-balance simulation error without inventing success", async () => {
     const calls = queue({ code: 40484, msg: "Insufficient balance. Please check your available funds and try again." }, envelope({ dataList: [
-      { callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: approveData(2n ** 256n - 1n), gasLimit: "74142" },
-      { callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678" },
+      { callDataType: "APPROVE", from: owner, to: NVDAB_ADDRESS, value: "0x0", data: venusApproveData(2n ** 256n - 1n), gasLimit: "74142" },
+      { callDataType: "DEPOSIT", from: owner, to: VENUS_VNVDAB_ADDRESS, value: "0x0", data: "0x12345678" },
     ] }));
     const result = await buildVenusDeposit(owner, destination, target, "100");
     expect(result.buildStatus).toBe("READY");
     expect(result.simulationStatus).toBe("BLOCKED_BY_WALLET_STATE");
     expect(result.rejectedAuthorization).toMatchObject({ status: "BROAD_APPROVAL_REJECTED", source: "BINANCE" });
     expect(result.actions[0].authorization).toMatchObject({ status: "BOUNDED_READY", source: "EQUITYRELAY_BOUNDED_REPLACEMENT", requestedAmountRaw: "100", allowedAmountRaw: "100" });
-    expect(result.actions[0].approvalSpender).toBe(result.actions[1].to);
-    expect(result.actions[0].rawCalldata).toBe(approveData(100n));
+    expect(result.actions[0].approvalSpender?.toLowerCase()).toBe(result.actions[1].to?.toLowerCase());
+    expect(result.actions[0].rawCalldata).toBe(venusApproveData(100n));
     expect(JSON.parse(calls[1].init.body as string).simulate).toBe(false);
   });
   it("does not build a deposit for a non-investable destination", async () => {
@@ -129,11 +132,19 @@ describe("read-only transaction builders", () => {
     await expect(buildVenusDeposit(owner, { ...destination, investable: false }, target, "100")).rejects.toThrow("VENUS_DESTINATION_UNAVAILABLE");
   });
   it("preserves a deposit-only response without inventing an approval", async () => {
-    queue(envelope({ dataList: [{ callDataType: "DEPOSIT", from: owner, to: router, value: "0x0", data: "0x12345678" }], preview: { success: true } }));
+    queue(envelope({ dataList: [{ callDataType: "DEPOSIT", from: owner, to: VENUS_VNVDAB_ADDRESS, value: "0x0", data: "0x12345678" }], preview: { success: true } }));
     const result = await buildVenusDeposit(owner, destination, target, "100");
     expect(result.actions.map(x => x.kind)).toEqual(["DEPOSIT"]);
     expect(result.authorizationStatus).toBe("NOT_REQUIRED");
     expect(result.rejectedAuthorization).toBeNull();
+  });
+  it.each(["SPCX", "TSLA"] as const)("validates the configured %s Venus market for read-only preflight", async underlying => {
+    const config = equityConfig(underlying);
+    const representation = { ...target, underlying, symbol: config.targetSymbol, address: config.targetAddress };
+    const liveDestination = { ...destination, assetAddress: config.targetAddress };
+    queue(envelope({ dataList: [{ callDataType: "DEPOSIT", from: owner, to: config.venusMarketAddress, value: "0x0", data: "0x12345678" }], preview: { success: true } }));
+    const result = await buildVenusDeposit(owner, liveDestination, representation, "100");
+    expect(result.actions[0]).toMatchObject({ kind: "DEPOSIT", to: config.venusMarketAddress, tokenInLabel: config.targetSymbol });
   });
   it("rejects browser-supplied addresses, investment IDs and calldata", () => {
     const intent = { underlying: "NVDA", sourceRepresentation: "ondo", amount: "0.05", destination: "venus", maxExposureLossBps: 50, takerAddress: owner };

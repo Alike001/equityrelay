@@ -3,7 +3,8 @@ import { z } from "zod";
 import { BinanceApiError, signedRequest } from "./client";
 import { decodeApprovalCalldata, isWalletStateFailure, unavailableSimulation, validateEvmAction } from "@/domain/preflight/validate";
 import { encodeExactApproval, reviewApproval } from "@/domain/authorization/approval";
-import { NVDAB_ADDRESS, sameAddress } from "@/domain/routing/identity";
+import { sameAddress } from "@/domain/routing/identity";
+import { equityConfig } from "@/domain/equities/registry";
 import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
 import type { Address, DestinationSnapshot, RepresentationSnapshot } from "@/types/route";
 import type { AuthorizationReview, PreflightAction, PreflightStage, SimulationResult } from "@/types/preflight";
@@ -23,7 +24,8 @@ const Preview = z.object({
 const Build = z.object({ dataList: z.array(RawItem), preview: Preview.optional().nullable() });
 
 export async function buildVenusDeposit(owner: Address, destination: DestinationSnapshot, target: RepresentationSnapshot, amountRaw: string): Promise<PreflightStage> {
-  if (!destination.investable || !sameAddress(destination.assetAddress, NVDAB_ADDRESS) || !sameAddress(target.address, NVDAB_ADDRESS)) throw new Error("VENUS_DESTINATION_UNAVAILABLE");
+  const config = equityConfig(target.underlying);
+  if (!destination.investable || !sameAddress(destination.assetAddress, config.targetAddress) || !sameAddress(target.address, config.targetAddress)) throw new Error("VENUS_DESTINATION_UNAVAILABLE");
   const amountHuman = decimalText(rawToDecimal(amountRaw, target.decimals));
   const requestBody = { address: owner, investmentId: destination.investmentId, token: { tokenAddress: target.address, amount: amountHuman } };
   let data: unknown;
@@ -46,7 +48,8 @@ export async function buildVenusDeposit(owner: Address, destination: Destination
       build.dataList.slice(0, -1).some(x => x.callDataType !== "APPROVE") || build.dataList.length > 2) throw new Error("INVALID_DEPOSIT_ACTION_ORDER");
   const depositItem = build.dataList.at(-1)!;
   const deposit: PreflightAction = { ...validateEvmAction({ kind: "DEPOSIT", chainId: 56, from: depositItem.from, to: depositItem.to, data: depositItem.data, value: depositItem.value, valueFormat: "hex", gasLimit: depositItem.gasLimit, gasPrice: depositItem.gasPrice, maxPriorityFeePerGas: depositItem.maxPriorityFeePerGas, maxFeePerGas: depositItem.maxFeePerGas, tokenIn: target.address, tokenOut: null, amountInRaw: amountRaw, expectedFrom: owner }),
-    amountInHuman: amountHuman, tokenInLabel: "NVDAB", tokenOutLabel: "Venus" };
+    amountInHuman: amountHuman, tokenInLabel: target.symbol, tokenOutLabel: "Venus" };
+  if (!deposit.to || !sameAddress(deposit.to, config.venusMarketAddress)) throw new Error("VENUS_MARKET_IDENTITY_MISMATCH");
   const actions: PreflightAction[] = [];
   let rejectedAuthorization: AuthorizationReview | null = null;
   const approvalItem = build.dataList[0]?.callDataType === "APPROVE" ? build.dataList[0] : null;
@@ -62,10 +65,10 @@ export async function buildVenusDeposit(owner: Address, destination: Destination
       rejectedAuthorization = review;
       const boundedCalldata = encodeExactApproval(decoded.spender, amountRaw);
       const replacement = validateEvmAction({ kind: "APPROVAL", chainId: 56, from: owner, to: target.address, data: boundedCalldata, value: "0x0", valueFormat: "hex", tokenIn: target.address, tokenOut: null, amountInRaw: amountRaw, expectedFrom: owner, expectedTo: target.address });
-      actions.push({ ...replacement, amountInHuman: amountHuman, tokenInLabel: "NVDAB", approvalSpender: decoded.spender, approvalAmountRaw: amountRaw,
+      actions.push({ ...replacement, amountInHuman: amountHuman, tokenInLabel: target.symbol, approvalSpender: decoded.spender, approvalAmountRaw: amountRaw,
         authorization: reviewApproval({ token: target.address, spender: decoded.spender, requestedAmountRaw: amountRaw, allowedAmountRaw: amountRaw, decimals: target.decimals, source: "EQUITYRELAY_BOUNDED_REPLACEMENT" }) });
     } else {
-      actions.push({ ...original, amountInHuman: amountHuman, tokenInLabel: "NVDAB", approvalSpender: decoded.spender, approvalAmountRaw: decoded.amountRaw, authorization: review });
+      actions.push({ ...original, amountInHuman: amountHuman, tokenInLabel: target.symbol, approvalSpender: decoded.spender, approvalAmountRaw: decoded.amountRaw, authorization: review });
     }
   }
   actions.push(deposit);

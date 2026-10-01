@@ -30,6 +30,8 @@ export type SwapBuildPlan = {
 };
 
 export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address, slippagePercent: string): Promise<SwapBuildPlan> {
+  const inputLabel = quote.inputSymbol ?? (quote.leg === 1 ? "NVDAon" : "USDT");
+  const outputLabel = quote.outputSymbol ?? (quote.leg === 1 ? "USDT" : "NVDAB");
   validateQuoteForBuild(quote);
   // Official Binance connector b1fe19c: GET /api/v1/dex/aggregator/swap.
   // The explicit slippage is derived from remaining user exposure budget, never loosened.
@@ -54,7 +56,7 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
     const tx = built.tx;
     if (tx.slippagePercent !== undefined && (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(tx.slippagePercent) || new Decimal(tx.slippagePercent).gt(slippagePercent))) throw new Error("BUILD_SLIPPAGE_EXCEEDS_POLICY");
     const approval = parseApprovalSignatureData(tx.signatureData, quote.from, owner, quote.inputRaw, quote.inputDecimals ?? null).map(x => ({ ...x,
-      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT",
+      tokenInLabel: inputLabel,
       amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(x.amountInRaw, quote.inputDecimals)),
     }));
     if (approval.length > 1 || approval.some(x => !x.approvalSpender || !sameAddress(x.approvalSpender, tx.to))) throw new Error("APPROVAL_SPENDER_MISMATCH");
@@ -67,7 +69,7 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
     });
     if (BigInt(action.minAmountOutRaw!) > BigInt(quoteOutputRaw)) throw new Error("MIN_RECEIVE_EXCEEDS_QUOTE");
     const labeledAction = { ...action,
-      tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
+      tokenInLabel: inputLabel, tokenOutLabel: outputLabel,
       amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(action.amountInRaw, quote.inputDecimals)),
       minAmountOutHuman: quote.outputDecimals == null ? null : decimalText(rawToDecimal(action.minAmountOutRaw!, quote.outputDecimals)),
       slippagePercent: tx.slippagePercent ?? null,
@@ -83,7 +85,7 @@ export async function buildSwapTransaction(quote: QuoteSnapshot, owner: Address,
       gasLimit: null, gasPrice: null, maxPriorityFeePerGas: null, maxFeePerGas: null,
       tokenIn: quote.from, tokenOut: quote.to, amountInRaw: quote.inputRaw, minAmountOutRaw: null,
       amountInHuman: quote.inputDecimals == null ? null : decimalText(rawToDecimal(quote.inputRaw, quote.inputDecimals)),
-      minAmountOutHuman: null, slippagePercent: null, tokenInLabel: quote.leg === 1 ? "NVDAon" : "USDT", tokenOutLabel: quote.leg === 1 ? "USDT" : "NVDAB",
+      minAmountOutHuman: null, slippagePercent: null, tokenInLabel: inputLabel, tokenOutLabel: outputLabel,
       approvalSpender: null, approvalAmountRaw: null,
       approvalExceedsInput: false, authorization: null,
       simulation: unavailableSimulation("RFQ is a typed-data signing path, not an EVM swap transaction."), simulationPrerequisite: "SIMULATABLE_NOW",
