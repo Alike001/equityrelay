@@ -5,32 +5,26 @@ import type { ExecutionActionV1 } from "@/domain/execution/action";
 export type WalletHandoffState = "READY_FOR_WALLET_REVIEW" | "QUOTE_REFRESH_REQUIRED" |
   "WAITING_FOR_CANONICAL_CONFIRMATION" | "CONFIRMED" | "FAILED";
 
-// Separate hard stop for the connected-wallet RPC. It remains in addition to
-// the server environment arm and PHASE3A_BROADCAST_DISABLED relay lock.
-export function requireConnectedWalletSendRelease(): never {
-  throw new Error("PHASE3E_WALLET_SEND_DISABLED");
-}
-
-export async function handoffSelectedWalletTransaction(provider: Eip1193Provider, transaction: WalletTransactionRequest): Promise<never> {
+export async function handoffSelectedWalletTransaction(provider: Eip1193Provider,
+  transaction: WalletTransactionRequest): Promise<`0x${string}`> {
   const [accounts, chainId] = await Promise.all([
     provider.request({ method: "eth_accounts" }) as Promise<string[]>,
     provider.request({ method: "eth_chainId" }) as Promise<string>,
   ]);
   if (chainId.toLowerCase() !== "0x38") throw new Error("BSC_CHAIN_REQUIRED");
   if (!accounts.some(account => account.toLowerCase() === transaction.from.toLowerCase())) throw new Error("SESSION_WALLET_MISMATCH");
-  requireConnectedWalletSendRelease();
-  // This statement is deliberately unreachable until a separate reviewed
-  // release removes the code lock. The exact selected provider is retained.
-  await provider.request({ method: "eth_sendTransaction", params: [{ from: transaction.from, to: transaction.to,
+  const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: transaction.from, to: transaction.to,
     data: transaction.data, value: transaction.value, chainId: transaction.chainId }] });
-  throw new Error("WALLET_TRANSACTION_RESULT_UNIMPLEMENTED");
+  if (typeof hash !== "string" || !/^0x[a-fA-F0-9]{64}$/.test(hash)) throw new Error("INVALID_WALLET_TRANSACTION_HASH");
+  return hash as `0x${string}`;
 }
 
 // Complete browser-side handoff boundary. This accepts route identity only;
 // transaction semantics always come back from authenticated server state.
-// The final call still terminates at PHASE3E_WALLET_SEND_DISABLED.
+// Server action delivery remains authoritative and refuses unless the runtime
+// execution arm is enabled. The browser cannot provide transaction semantics.
 export async function prepareLockedWalletHandoff(input: { provider: Eip1193Provider; routeId: string;
-  stage: ExecutionActionV1["stage"]; idempotencyKey: string; fetcher?: typeof fetch }): Promise<never> {
+  stage: ExecutionActionV1["stage"]; idempotencyKey: string; fetcher?: typeof fetch }): Promise<`0x${string}`> {
   const fetcher = input.fetcher ?? fetch;
   const confirmationResponse = await fetcher(`/api/execution/routes/${input.routeId}/confirmations`, {
     method: "POST", headers: { "Content-Type": "application/json" },
