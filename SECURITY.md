@@ -39,15 +39,15 @@ Historical mainnet transaction `0x5516148304443e2461c673f914d3de4140b8f45ef511df
 
 The former $2 planning cap is no longer the active assumption. The minimum tested 0.022 NVDAon route and its source-acquisition quote remain dated read-only evidence. This does not authorize funding or execution. Execution locks remain mandatory.
 
-## Execution locks
+## Execution gates
 
-`EQUITYRELAY_MAINNET_EXECUTION` defaults to false. `requireBroadcastRelease()` always throws `PHASE3A_BROADCAST_DISABLED`. The built server returned HTTP 423 `MAINNET_EXECUTION_NOT_ARMED` with the flag false, and HTTP 423 `PHASE3A_BROADCAST_DISABLED` with it true. There is no enabled wallet transaction control, backend private key or Agentic Wallet path.
+`EQUITYRELAY_MAINNET_EXECUTION` defaults to false. Server action delivery calls `requireMainnetExecutionArm()` before reading or returning wallet transaction fields. Production therefore cannot reach `eth_sendTransaction` while the environment arm is false. The deprecated `/api/route/execute` relay remains permanently closed: `requireBroadcastRelease()` always throws `PHASE3A_BROADCAST_DISABLED`. There is no backend private key, signed-transaction relay, or Agentic Wallet path.
 
-Phase 3E adds a third client handoff stop: `requireConnectedWalletSendRelease()` always throws `PHASE3E_WALLET_SEND_DISABLED` before `eth_sendTransaction`. The selected EIP-1193 provider is checked for the authenticated account and chain 56, but no wallet transaction prompt can be opened in this release.
+The reviewed connected-wallet handoff can call `eth_sendTransaction` only with fields returned by the armed authenticated action-delivery endpoint. It rechecks the selected provider account and chain 56, returns only a transaction hash, and gives that hash no lifecycle authority until canonical reconciliation succeeds. The production environment arm remains false, so this code path is disarmed in production.
 
 ## Multi-equity capability boundary
 
-The route registry allowlists NVDA, SPCX and TSLA identities. Current Binance RWA and DeFi responses must match the configured issuer, symbol, token and Venus market identities; live ratios, status, investment IDs and investability are never taken from dated configuration. Each configured Venus profile binds the bStock token, vToken market, market symbol, deployed implementation, deposit selectors, redemption selector and event semantics. Genuine historical canonical supply and redemption receipts validate all three profiles. Authenticated route creation, confirmation issuance, reservation and wallet action delivery remain server-authoritative. All broadcast and wallet-send locks remain active for every asset.
+The route registry allowlists NVDA, SPCX and TSLA identities. Current Binance RWA and DeFi responses must match the configured issuer, symbol, token and Venus market identities; live ratios, status, investment IDs and investability are never taken from dated configuration. Each configured Venus profile binds the bStock token, vToken market, market symbol, deployed implementation, deposit selectors, redemption selector and event semantics. Genuine historical canonical supply and redemption receipts validate all three profiles. Authenticated route creation, confirmation issuance, reservation and wallet action delivery remain server-authoritative. A second asset-binding check rejects any persisted action whose source, target, approval token/spender, or Venus market conflicts with the route's selected registry asset. Dynamic quote availability is independent per asset; an unavailable asset cannot create a durable execution route and does not disable another validated asset with a fresh PASS.
 
 ## Phase 3E action handoff
 
@@ -72,7 +72,7 @@ The same application build and server-side Binance signing code returned busines
 
 The 2026-10-01 read-only refresh classified setup/product actions individually. Current Binance estimates were available for both setup actions, both bounded product approvals, both swaps, and the bounded Venus approval. The Venus deposit gas remained unavailable for the empty quote wallet. The recovery build returned a current redeem limit and exit-swap limit, while the exit approval gas remained unavailable. Historical canonical supply gas and a same-token approval estimate may be used only as `HISTORICAL_CANONICAL` and `PROXY` planning evidence. They are not exact future fees. The resulting planning reserve is approximately `0.00066 BNB` at the observed gas price with a 2× aggregate buffer; it must be refreshed before funding.
 
-## Required before a separate lock-removal commit
+## Required before production execution is armed
 
 1. Confirm the managed Neon backup/retention policy and use restricted production credentials for any execution-enabled environment.
 2. Complete real connected-wallet SIWE browser tests at the final HTTPS origin, including account/chain changes, replay, expiry, wrong signer, logout and reload.
@@ -81,5 +81,5 @@ The 2026-10-01 read-only refresh classified setup/product actions individually. 
 5. Revalidate the live vNVDAB market, underlying and implementation immediately before any future deposit, and retain regression coverage against both historical canonical fixtures.
 6. Review lost-hash and abandoned-prompt behavior under possible delayed wallet broadcasts; do not equate zero recent matches with proof of no submission.
 7. Refresh every enabled action's live balance, allowance, gas, quote freshness, bounded approval and exposure-policy checks. Resolve or explicitly accept the wallet-state-dependent deposit and exit-approval gas gaps before funding.
-8. Connect the disabled UI review control to the tested handoff function only in the dedicated lock-removal change; retain one transaction at a time and canonical stop points.
-9. Obtain a distinct security review and explicit authorization for any later funded mainnet proof. Removing the code lock must be a separate reviewed commit.
+8. Retain one transaction at a time and every canonical stop point when exposing the reviewed handoff control in the execution UI.
+9. Obtain explicit authorization for the funded mainnet proof and change the production environment arm in a separately supervised operation.
