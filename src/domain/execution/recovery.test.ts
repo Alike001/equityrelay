@@ -7,7 +7,7 @@ import type { ExecutionSession, SettlementEvidence } from "@/types/execution";
 const wallet = "0x1111111111111111111111111111111111111111" as const;
 const router = "0x2222222222222222222222222222222222222222" as const;
 const hash = `0x${"1".repeat(64)}` as const;
-function base() { return { id: "route", owner: wallet, stage: "VENUS_CONFIRMED", venus: { investable: true, investmentId: "venus" },
+function base() { return { id: "route", owner: wallet, intent: { underlying: "NVDA" }, stage: "VENUS_CONFIRMED", venus: { investable: true, investmentId: "venus" },
   events: [], reviews: {}, submitted: {}, recovery: null } as unknown as ExecutionSession; }
 const position = { market: VENUS_VNVDAB_ADDRESS, investmentId: "venus", underlyingAmountRaw: "22000000000000000",
   vTokenAmountRaw: "2200000", transactionHash: hash, blockNumber: "100" };

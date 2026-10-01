@@ -47,7 +47,7 @@ Phase 3E adds a third client handoff stop: `requireConnectedWalletSendRelease()`
 
 ## Multi-equity capability boundary
 
-The read-only route registry allowlists NVDA, SPCX and TSLA identities. Current Binance RWA and DeFi responses must match the configured issuer, symbol, token and Venus market identities; live ratios, status, investment IDs and investability are never taken from dated configuration. SPCX and TSLA have `executionVerifierStatus=NOT_VALIDATED`. Authenticated route creation returns `EXECUTION_VERIFIER_NOT_VALIDATED` before preview persistence, and execution lifecycle initialization, confirmation issuance, reservation, and wallet action delivery independently reject an unvalidated underlying. Only NVDA may enter durable execution preparation. All broadcast and wallet-send locks remain active for NVDA as well.
+The route registry allowlists NVDA, SPCX and TSLA identities. Current Binance RWA and DeFi responses must match the configured issuer, symbol, token and Venus market identities; live ratios, status, investment IDs and investability are never taken from dated configuration. Each configured Venus profile binds the bStock token, vToken market, market symbol, deployed implementation, deposit selectors, redemption selector and event semantics. Genuine historical canonical supply and redemption receipts validate all three profiles. Authenticated route creation, confirmation issuance, reservation and wallet action delivery remain server-authoritative. All broadcast and wallet-send locks remain active for every asset.
 
 ## Phase 3E action handoff
 
@@ -61,6 +61,12 @@ The read-only route registry allowlists NVDA, SPCX and TSLA identities. Current 
 ## Historical Venus redemption evidence
 
 Historical BSC transaction `0xa70c2d0622e26a3b5ddc34f33bac4de07ec2967328a3c92b67f2d83c44653336` at block `124638518` validates the live vNVDAB `redeem(uint256)` path. Canonical RPC evidence shows a successful call to the live market, one exact `Redeem` event for redeemer `0x86b6…17c5`, 272 raw vNVDAB redeemed, `2720000005067` raw NVDAB returned, one matching vNVDAB transfer into the market, and one matching NVDAB transfer to the redeemer. The event records a zero resulting vToken balance; current `balanceOf` and `getAccountSnapshot` also return zero. The selected public RPCs do not expose archive `eth_call` at this block, so unavailable historical position reads are explicitly distinguished from transient canonical RPC failures. The event plus both token transfers remain mandatory. This fixture is public historical verifier evidence and is not an EquityRelay execution.
+
+Phase 3G adds matching public historical evidence for vTSLAB and vSPCXB. vTSLAB supply transaction `0x5bbb48a465caf465393b31bfe50180d3320d8df3ed3577dc3eca77cf3878fcd1` at block `124968677` and redemption transaction `0xccf640d267103dc3f4c26e0951c5b00531a097b6b97eb9837d60fcee26bf5a83` at block `124758681` contain exact market calls, Mint/Redeem events, underlying transfers and vToken transfers. vSPCXB supply transaction `0xd7cc44806b951398734345ec25d963717e5c3df05c3d5aa88868ce1680742a65` at block `125079309` and redemption transaction `0x4aeb8675fdb616bdf1f45f7130db32501294396104e8bcd98a93eb2221a18052` at block `125089852` satisfy the same evidence contract. The production RPC does not serve block-specific historical state for these blocks, so fixtures record that limitation explicitly; the verifier never converts transient RPC errors into valid evidence.
+
+## Binance production availability
+
+The same application build and server-side Binance signing code returned business code `40304` from Vercel's default `iad1` function region and genuine live preview data from `sin1`. The production function region is therefore pinned to Singapore in `vercel.json`. This changes the normal deployment egress region; it does not alter DNS, use hard-coded CDN addresses, proxy arbitrary Binance requests, or substitute benchmark data. Binance failures still return `UNAVAILABLE` and cannot become execution evidence.
 
 ## Gas evidence boundary
 

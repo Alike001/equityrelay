@@ -1,0 +1,99 @@
+{
+  "fixtureType": "HISTORICAL MAINNET VENUS REDEMPTION FIXTURE",
+  "description": "Public BSC evidence for TSLA redeem. This is not an EquityRelay execution.",
+  "chainId": 56,
+  "transaction": {
+    "hash": "0xccf640d267103dc3f4c26e0951c5b00531a097b6b97eb9837d60fcee26bf5a83",
+    "blockNumber": "124758681",
+    "blockHash": "0x85098b74193e12d245854d484abcb605cea50c6e54176d29dfbab5161a94ae51",
+    "from": "0xfcbd6c03947859a81e4b140bbf7584aec7ef8ec6",
+    "to": "0x97421799419eb782628e73e7220d8e0a207469a3",
+    "input": "0xdb006a750000000000000000000000000000000000000000000000000000000000c4a43a",
+    "value": "0",
+    "decodedFunction": "redeem",
+    "decodedArgs": [
+      "12887098"
+    ]
+  },
+  "receipt": {
+    "status": "success",
+    "blockNumber": "124758681",
+    "blockHash": "0x85098b74193e12d245854d484abcb605cea50c6e54176d29dfbab5161a94ae51",
+    "from": "0xfcbd6c03947859a81e4b140bbf7584aec7ef8ec6",
+    "to": "0x97421799419eb782628e73e7220d8e0a207469a3",
+    "logs": [
+      {
+        "address": "0x97421799419eb782628e73e7220d8e0a207469a3",
+        "topics": [
+          "0x4dec04e750ca11537cabcd8a9eab06494de08da3735bc8871cd41250e190bc04"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000000635ff1dd93ef0d7bf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a76400000000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": 192
+      },
+      {
+        "address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x00000000000000000000000097421799419eb782628e73e7220d8e0a207469a3",
+          "0x000000000000000000000000fcbd6c03947859a81e4b140bbf7584aec7ef8ec6"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000000001c9d77c213a3abf",
+        "logIndex": 194
+      },
+      {
+        "address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "topics": [
+          "0x0226a2f5c1ae0e071aeec3d4ebafcefdc5c549be11f40ed27e76e802acccf374",
+          "0x00000000000000000000000097421799419eb782628e73e7220d8e0a207469a3",
+          "0x000000000000000000000000fcbd6c03947859a81e4b140bbf7584aec7ef8ec6"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000000001c9d77c213a3abf00000000000000000000000000000000000000000000000001c9d77c213a3abf",
+        "logIndex": 195
+      },
+      {
+        "address": "0x97421799419eb782628e73e7220d8e0a207469a3",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000fcbd6c03947859a81e4b140bbf7584aec7ef8ec6",
+          "0x00000000000000000000000097421799419eb782628e73e7220d8e0a207469a3"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000000000000c4a43a",
+        "logIndex": 196
+      },
+      {
+        "address": "0x97421799419eb782628e73e7220d8e0a207469a3",
+        "topics": [
+          "0xbd5034ffbd47e4e72a94baa2cdb74c6fad73cb3bcdc13036b72ec8306f5a7646"
+        ],
+        "data": "0x000000000000000000000000fcbd6c03947859a81e4b140bbf7584aec7ef8ec600000000000000000000000000000000000000000000000001c9d77c213a3abf0000000000000000000000000000000000000000000000000000000000c4a43a0000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": 197
+      }
+    ]
+  },
+  "block": {
+    "number": "124758681",
+    "hash": "0x85098b74193e12d245854d484abcb605cea50c6e54176d29dfbab5161a94ae51",
+    "timestamp": "1790703823"
+  },
+  "marketIdentity": {
+    "market": "0x97421799419eb782628e73e7220d8e0a207469a3",
+    "underlying": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+    "symbol": "vTSLAB",
+    "implementationObservedAtValidation": "0xcdfea50f7ceccb24fe804657db8e6c93b689941e"
+  },
+  "position": {
+    "blockExactStatus": "ARCHIVE_STATE_UNAVAILABLE",
+    "reason": "Production RPC returned -32000 not supported for block-specific eth_call.",
+    "currentVTokenBalanceRaw": "0",
+    "currentAccountSnapshot": [
+      "0",
+      "0",
+      "0",
+      "10000000969754651552630794396"
+    ]
+  },
+  "gas": {
+    "gasUsed": "248577",
+    "effectiveGasPriceWei": "65933259"
+  }
+}

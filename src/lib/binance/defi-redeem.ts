@@ -3,7 +3,8 @@ import { decodeFunctionData, parseAbi } from "viem";
 import { z } from "zod";
 import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
 import { isWalletStateFailure, parseGas, parseUnsignedValue } from "@/domain/preflight/validate";
-import { NVDAB_ADDRESS, sameAddress, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { sameAddress } from "@/domain/routing/identity";
+import { equityConfig } from "@/domain/equities/registry";
 import type { Address, DestinationSnapshot, RepresentationSnapshot } from "@/types/route";
 import { bscPublicClient, readBscWithRetry } from "@/lib/execution/rpc";
 import { BinanceApiError, signedRequest } from "./client";
@@ -57,13 +58,14 @@ function unavailable(amountRaw: string, amountHuman: string, reason: string, sta
 
 export async function buildVenusRedeem(owner: Address, destination: DestinationSnapshot, target: RepresentationSnapshot, amountRaw: string,
   exactVTokensRaw?: string): Promise<VenusRedeemBuild> {
+  const config = equityConfig(target.underlying);
   if (exactVTokensRaw) {
     if (!/^[1-9]\d*$/.test(exactVTokensRaw)) throw new Error("INVALID_REDEEM_AMOUNT");
-    const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: VENUS_VNVDAB_ADDRESS, abi: redeemAbi, functionName: "exchangeRateStored" }));
+    const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: config.venusMarketAddress, abi: redeemAbi, functionName: "exchangeRateStored" }));
     amountRaw = ((BigInt(exactVTokensRaw) * rate + 10n ** 18n - 1n) / 10n ** 18n).toString();
   }
   const amountHuman = decimalText(rawToDecimal(amountRaw, target.decimals));
-  if (!destination.investable || !sameAddress(destination.assetAddress, NVDAB_ADDRESS) || !sameAddress(target.address, NVDAB_ADDRESS))
+  if (!destination.investable || !sameAddress(destination.assetAddress, config.targetAddress) || !sameAddress(target.address, config.targetAddress))
     return unavailable(amountRaw, amountHuman, "DESTINATION_UNAVAILABLE", "UNAVAILABLE");
   const body = { address: owner, investmentId: destination.investmentId, token: { tokenAddress: target.address, amount: amountHuman } };
   let raw: unknown;
@@ -84,7 +86,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
   const redeems = build.dataList.filter(item => item.callDataType === "REDEEM");
   if (approvals.length || redeems.length !== 1 || build.dataList.length !== 1) throw new Error("UNEXPECTED_REDEEM_ACTION_ORDER");
   const item = redeems[0];
-  if (!sameAddress(item.from, owner) || !sameAddress(item.to, VENUS_VNVDAB_ADDRESS)) throw new Error("INVALID_REDEEM_TARGET");
+  if (!sameAddress(item.from, owner) || !sameAddress(item.to, config.venusMarketAddress)) throw new Error("INVALID_REDEEM_TARGET");
   if (parseUnsignedValue(item.value, "hex") !== "0") throw new Error("UNEXPECTED_NATIVE_VALUE");
   let decoded: ReturnType<typeof decodeFunctionData>;
   try { decoded = decodeFunctionData({ abi: redeemAbi, data: item.data as `0x${string}` }); }
@@ -96,7 +98,7 @@ export async function buildVenusRedeem(owner: Address, destination: DestinationS
   if (decoded.functionName === "redeemUnderlying") {
     if (decodedAmount.toString() !== amountRaw) throw new Error("REDEEM_AMOUNT_MISMATCH");
   } else if (decoded.functionName === "redeem") {
-    const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: VENUS_VNVDAB_ADDRESS, abi: redeemAbi, functionName: "exchangeRateStored" }));
+    const rate = await readBscWithRetry(() => bscPublicClient().readContract({ address: config.venusMarketAddress, abi: redeemAbi, functionName: "exchangeRateStored" }));
     const expectedVTokens = BigInt(amountRaw) * 10n ** 18n / rate;
     if (expectedVTokens <= 0n || decodedAmount !== expectedVTokens || exactVTokensRaw && decodedAmount.toString() !== exactVTokensRaw)
       throw new Error("REDEEM_EXCHANGE_RATE_MISMATCH");

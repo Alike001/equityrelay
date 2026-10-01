@@ -15,7 +15,8 @@ const owner = "0x1111111111111111111111111111111111111111" as const;
 const router = "0x2222222222222222222222222222222222222222" as const;
 const spender = router;
 const approveData = (amount: bigint) => `0x095ea7b3${spender.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
-const venusApproveData = (amount: bigint) => `0x095ea7b3${VENUS_VNVDAB_ADDRESS.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
+const approvalData = (approvalSpender: string, amount: bigint) => `0x095ea7b3${approvalSpender.slice(2).padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
+const venusApproveData = (amount: bigint) => approvalData(VENUS_VNVDAB_ADDRESS, amount);
 const quote = (): QuoteSnapshot => ({ leg: 1, from: NVDAON_ADDRESS, to: USDT_ADDRESS, inputRaw: "100", outputRaw: "99", quoteId: "fresh-id", vendor: "vendor", tradeFeeUsd: null, priceImpactPercent: null, observedAt: new Date().toISOString(), expiresAt: null });
 const destination = { protocol: "Venus" as const, chainId: 56 as const, investmentId: "live-id", assetAddress: NVDAB_ADDRESS, investable: true, observedAt: new Date().toISOString() };
 const target = { chainId: 56 as const, underlying: "NVDA" as const, issuer: "bstock" as const, symbol: "NVDAB" as const, address: NVDAB_ADDRESS, decimals: 18, tokenToShareRatio: "1", open: true, observedAt: new Date().toISOString() };
@@ -145,6 +146,23 @@ describe("read-only transaction builders", () => {
     queue(envelope({ dataList: [{ callDataType: "DEPOSIT", from: owner, to: config.venusMarketAddress, value: "0x0", data: "0x12345678" }], preview: { success: true } }));
     const result = await buildVenusDeposit(owner, liveDestination, representation, "100");
     expect(result.actions[0]).toMatchObject({ kind: "DEPOSIT", to: config.venusMarketAddress, tokenInLabel: config.targetSymbol });
+  });
+  it.each(["NVDA", "SPCX", "TSLA"] as const)("rejects and exactly replaces a broad %s Venus approval", async underlying => {
+    const config = equityConfig(underlying);
+    const representation = { ...target, underlying, symbol: config.targetSymbol, address: config.targetAddress };
+    const liveDestination = { ...destination, assetAddress: config.targetAddress };
+    queue(envelope({ dataList: [
+      { callDataType: "APPROVE", from: owner, to: config.targetAddress, value: "0x0",
+        data: approvalData(config.venusMarketAddress, 2n ** 256n - 1n) },
+      { callDataType: "DEPOSIT", from: owner, to: config.venusMarketAddress, value: "0x0", data: "0x12345678" },
+    ], preview: { success: true } }));
+    const result = await buildVenusDeposit(owner, liveDestination, representation, "100");
+    expect(result.rejectedAuthorization).toMatchObject({ status: "BROAD_APPROVAL_REJECTED", source: "BINANCE" });
+    expect(result.actions[0]).toMatchObject({ kind: "APPROVAL", to: config.targetAddress, approvalAmountRaw: "100",
+      authorization: { status: "BOUNDED_READY", source: "EQUITYRELAY_BOUNDED_REPLACEMENT",
+        requestedAmountRaw: "100", allowedAmountRaw: "100" } });
+    expect(result.actions[0].approvalSpender?.toLowerCase()).toBe(config.venusMarketAddress.toLowerCase());
+    expect(result.actions[0].rawCalldata).toBe(approvalData(config.venusMarketAddress, 100n));
   });
   it("rejects browser-supplied addresses, investment IDs and calldata", () => {
     const intent = { underlying: "NVDA", sourceRepresentation: "ondo", amount: "0.05", destination: "venus", maxExposureLossBps: 50, takerAddress: owner };

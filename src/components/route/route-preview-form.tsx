@@ -9,8 +9,8 @@ import type { SupportedUnderlying } from "@/domain/equities/registry";
 
 const assets: Array<{ underlying: SupportedUnderlying; name: string; symbol: string; icon: string; execution: "VALIDATED" | "NOT_VALIDATED" }> = [
   { underlying: "NVDA", name: "NVIDIA", symbol: "NVDA", icon: "N", execution: "VALIDATED" },
-  { underlying: "TSLA", name: "Tesla", symbol: "TSLA", icon: "T", execution: "NOT_VALIDATED" },
-  { underlying: "SPCX", name: "SPCX", symbol: "SPCX", icon: "S", execution: "NOT_VALIDATED" },
+  { underlying: "TSLA", name: "Tesla", symbol: "TSLA", icon: "T", execution: "VALIDATED" },
+  { underlying: "SPCX", name: "SPCX", symbol: "SPCX", icon: "S", execution: "VALIDATED" },
 ];
 
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;

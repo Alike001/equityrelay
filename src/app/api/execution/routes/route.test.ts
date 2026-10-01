@@ -36,14 +36,16 @@ describe("authenticated execution route creation", () => {
     const response = await POST(request(intent));
     expect(response.status).toBe(401);
   });
-  it.each(["SPCX", "TSLA"])("refuses preview-only %s before preview or persistence", async underlying => {
+  it.each(["SPCX", "TSLA"])("creates a server-authoritative route for validated %s", async underlying => {
     vi.clearAllMocks();
     mocks.session.mockResolvedValue(wallet);
+    mocks.preview.mockResolvedValue({ kind: "decision", state: "PASS" });
+    mocks.begin.mockReturnValue({ id: `server-${underlying}`, stage: "ROUTE_POLICY_PASS" });
+    mocks.create.mockResolvedValue(undefined);
     const response = await POST(request({ ...intent, underlying }));
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ code: "EXECUTION_VERIFIER_NOT_VALIDATED" });
-    expect(mocks.preview).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(mocks.preview).toHaveBeenCalledWith({ ...intent, underlying, takerAddress: wallet });
+    expect(mocks.create).toHaveBeenCalled();
   });
   it("rejects an unsupported ticker", async () => {
     vi.clearAllMocks();

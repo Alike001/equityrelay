@@ -46,7 +46,7 @@ export async function deliverWalletAction(input: { routeId: string; stepId: stri
     catch { throw new Error("QUOTE_REFRESH_REQUIRED"); }
   }
   if (action.kind === "DEPOSIT") {
-    const current = await discoverVenusInvestment();
+    const current = await discoverVenusInvestment(row.session_snapshot.intent.underlying);
     if (!row.session_snapshot.venus?.investable || action.planIdentity !== row.session_snapshot.venus.investmentId ||
         !current?.investable || current.investmentId !== action.planIdentity)
       throw new Error("DESTINATION_UNAVAILABLE");

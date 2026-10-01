@@ -6,6 +6,7 @@ import type { ConfirmedTransaction, ExecutionReview, ExecutionSession } from "@/
 import type { PreflightAction } from "@/types/preflight";
 import { beginExecutionSession, measureSettlement, observeTransaction, prepareReview, recordConfirmation, rediscoverVenus, recheckPolicy, requoteLeg2, submitPlannedAction, verifyExecutionReceipt } from "./lifecycle";
 import { deriveSettlement } from "./settlement";
+import { equityConfig } from "@/domain/equities/registry";
 
 const owner = "0x1111111111111111111111111111111111111111" as Address;
 const router = "0x2222222222222222222222222222222222222222" as Address;
@@ -60,9 +61,17 @@ function settledLeg1() { return measureSettlement(leg1Confirmed(), "LEG1", deriv
 function freshLeg2(output = "998000000000000000") { return quote(2, USDT_ADDRESS, NVDAB_ADDRESS, actualUsdt, output, "fresh-second", freshTime); }
 
 describe("Phase 3A execution boundaries", () => {
-  it("refuses a preview-only asset before an execution session exists", () => {
-    const spcx = { ...preview(), underlying: "SPCX" as const, displayName: "SPCX", executionVerifierStatus: "NOT_VALIDATED" as const };
-    expect(() => beginExecutionSession("route", owner, spcx)).toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
+  it.each(["NVDA", "SPCX", "TSLA"] as const)("starts a validated %s execution session from its own identities", underlying => {
+    const config = equityConfig(underlying);
+    const original = preview();
+    const source = { ...original.evidence.source, underlying, symbol: config.sourceSymbol, address: config.sourceAddress };
+    const target = { ...original.evidence.target, underlying, symbol: config.targetSymbol, address: config.targetAddress };
+    const assetPreview = { ...original, underlying, displayName: config.displayName, executionVerifierStatus: "VALIDATED" as const,
+      evidence: { ...original.evidence, source, target,
+        destination: { ...original.evidence.destination, assetAddress: config.targetAddress },
+        leg1: { ...original.evidence.leg1, from: config.sourceAddress },
+        leg2: { ...original.evidence.leg2, to: config.targetAddress } } } satisfies RouteDecision;
+    expect(beginExecutionSession(`route-${underlying}`, owner, assetPreview).intent.underlying).toBe(underlying);
   });
   it("requires confirmation and confirmed approval before the first swap", () => {
     const reviewed = prepareReview(start(), review("LEAVE_ONDO", one, preview().evidence.leg1));

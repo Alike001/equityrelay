@@ -2,7 +2,7 @@
 
 **Own the stock. We handle the rail.**
 
-EquityRelay is a destination-driven router for supported tokenized equity assets on BNB Chain. Read-only previews currently support NVIDIA, SPCX and Tesla through the same `Ondo representation → USDT → bStock representation → Venus` primitive and user-defined exposure policy. NVIDIA remains the only asset with validated canonical execution verifiers. Phase 2 builds and reviews unsigned transactions with exact bounded approvals. Phase 3 adds durable, authenticated execution preparation and canonical read-only verification. Mainnet execution remains blocked by the environment guard, the Phase 3A code lock and the connected-wallet send lock. Nothing is signed or broadcast.
+EquityRelay is a destination-driven router for supported tokenized equity assets on BNB Chain. Read-only previews currently support NVIDIA, SPCX and Tesla through the same `Ondo representation → USDT → bStock representation → Venus` primitive and user-defined exposure policy. Historical canonical BSC evidence validates the Venus supply and redemption verifier profiles for all three configured markets. Phase 2 builds and reviews unsigned transactions with exact bounded approvals. Phase 3 adds durable, authenticated execution preparation and canonical read-only verification. Mainnet execution remains blocked by the environment guard, the Phase 3A code lock and the connected-wallet send lock. Nothing is signed or broadcast.
 
 ## Run locally
 
@@ -10,7 +10,7 @@ EquityRelay is a destination-driven router for supported tokenized equity assets
 2. Provision a PostgreSQL 16 or newer database. Set `DATABASE_URL` server-side and run `npm run migrate`. For a local rehearsal, a loopback-only Docker PostgreSQL instance is sufficient; PGlite is used only for isolated unit tests.
 3. Create `.env.local` **in this repository** with `BINANCE_W3_API_KEY`, `BINANCE_W3_API_SECRET`, `DATABASE_URL`, `EQUITYRELAY_BSC_RPC_URL` and the exact `EQUITYRELAY_PUBLIC_ORIGIN`. Keep it local and ignored by Git. Do not copy the feasibility harness's secret file. Set `EQUITYRELAY_MAINNET_EXECUTION=false`.
 4. Run `npm run dev` and open the configured origin.
-5. Open `/app`, select a supported asset, enter a human-readable wrapper amount and a BSC address for quote context, set the maximum exposure reduction, then build the route. On `PASS`, select **Preflight route** to review unsigned actions. The address is used for read-only, potentially taker-specific quotes and simulations. SPCX and TSLA remain preview-only. The connected-wallet control signs only an authentication message; transaction controls remain disabled.
+5. Open `/app`, select a supported asset, enter a human-readable wrapper amount and a BSC address for quote context, set the maximum exposure reduction, then build the route. On `PASS`, select **Preflight route** to review unsigned actions. The address is used for read-only, potentially taker-specific quotes and simulations. The connected-wallet control signs only an authentication message; transaction controls remain disabled.
 
 Without configured Binance credentials, the UI explicitly shows `UNAVAILABLE`.
 
@@ -27,7 +27,7 @@ The signed Binance client and response adapters follow the successful 2026-09-29
 
 ## Phase 3D execution preparation
 
-The read-only production rehearsal is deployed at `https://equityrelay.vercel.app` on Vercel with an attached managed Neon PostgreSQL database. The sanitized `/api/health/execution-readiness` check validates four migrations, chain 56, the configured finality policy, the false environment arm, and the active code lock. Wallet authentication still requires an interactive rehearsal with the intended proof wallet before any lock-removal review.
+The read-only production rehearsal is deployed at `https://equityrelay.vercel.app` on Vercel with an attached managed Neon PostgreSQL database. Binance-facing server functions are pinned to Vercel Singapore (`sin1`) because identical signed calls from the default US function region returned Binance business code `40304`; the Singapore deployment returned genuine live data without a fallback. The sanitized `/api/health/execution-readiness` check validates four migrations, chain 56, the configured finality policy, the false environment arm, and the active code lock.
 
 - Apply `npm run migrate` to the intended managed PostgreSQL database during deployment. Migrations are serialized with a PostgreSQL advisory transaction lock and recorded in `schema_migrations`. `npm run migrate:validate` checks the schema in PGlite; `EQUITYRELAY_TEST_DATABASE_URL=<isolated PostgreSQL URL> npx vitest run src/lib/db/real-postgres.test.ts` exercises real PostgreSQL restart/replay/concurrency behavior. Do not point that test at a production database.
 - In production, set `EQUITYRELAY_TRUSTED_CLIENT_IP_HEADER` to a header set and overwritten by the trusted edge proxy (`x-real-ip`, `cf-connecting-ip`, `x-vercel-forwarded-for`, or `x-forwarded-for`) and `EQUITYRELAY_RATE_LIMIT_SECRET` to a stable random server-only value of at least 32 characters. The challenge route fails closed if these are missing. Configure the proxy to strip incoming client copies of that header. IPs are stored only as keyed HMAC bucket identifiers. Wallet and global limits also apply.
@@ -47,6 +47,6 @@ The read-only production rehearsal is deployed at `https://equityrelay.vercel.ap
 - `src/domain/authorization/` ABI-decodes approvals and constructs exact unsigned ERC-20 approvals. `src/domain/execution/` holds the staged product, test-setup, redemption, exit, and recovery state machines. `src/lib/execution/` holds server-only durable reviews, canonical reads and a submission adapter blocked by `PHASE3A_BROADCAST_DISABLED`. `/api/route/execute` always refuses while the code lock remains.
 - `src/components/` and `src/app/` present the landing page, destination-first route flow, and feasibility record.
 
-Authenticated execution route creation fails closed with `EXECUTION_VERIFIER_NOT_VALIDATED` for SPCX and TSLA. The existing NVDA execution lifecycle, canonical vNVDAB verifiers and recovery route remain specialized and unchanged in scope.
+Authenticated execution route creation remains server-authoritative for the configured allowlist. NVDA, SPCX and TSLA now have distinct Venus verification profiles backed by genuine historical supply and redemption receipts. Current live RWA and Venus identities must agree with the profile before preparation, and the global execution guards remain active for every asset.
 
 See [DEVEX_LOG.md](DEVEX_LOG.md) for observed API findings. The product scope and later execution safeguards are in [docs/context/BUILD_SPEC.md](docs/context/BUILD_SPEC.md).

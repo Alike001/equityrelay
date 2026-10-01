@@ -8,13 +8,11 @@ describe("supported equity registry", () => {
     expect(isSupportedUnderlying("AAPL")).toBe(false);
   });
 
-  it("keeps execution eligibility narrower than preview eligibility", () => {
-    expect(executionVerifierValidated("NVDA")).toBe(true);
-    expect(executionVerifierValidated("SPCX")).toBe(false);
-    expect(executionVerifierValidated("TSLA")).toBe(false);
-    expect(() => assertExecutionVerifierValidated("SPCX")).toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
-    expect(() => assertExecutionVerifierValidated("TSLA")).toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
-    expect(() => assertExecutionVerifierValidated("NVDA")).not.toThrow();
+  it("marks only historically validated verifier profiles execution eligible", () => {
+    for (const underlying of SUPPORTED_UNDERLYINGS) {
+      expect(executionVerifierValidated(underlying)).toBe(true);
+      expect(() => assertExecutionVerifierValidated(underlying)).not.toThrow();
+    }
     expect(equityConfig("SPCX").routePreviewSupported).toBe(true);
   });
 });

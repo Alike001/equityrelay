@@ -1,4 +1,5 @@
-import { sameAddress, NVDAB_ADDRESS, USDT_ADDRESS, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { sameAddress, USDT_ADDRESS } from "@/domain/routing/identity";
+import { equityConfig } from "@/domain/equities/registry";
 import type { ExecutionActionV1 } from "./action";
 import type { ExecutionSession, RecoveryState, SettlementEvidence } from "@/types/execution";
 import type { QuoteSnapshot } from "@/types/route";
@@ -7,8 +8,9 @@ import type { TransactionObservation } from "@/types/execution";
 type VenusPosition = NonNullable<ExecutionSession["recovery"]>["venusPosition"];
 
 export function beginVenusRecovery(session: ExecutionSession, position: VenusPosition): ExecutionSession {
+  const config = equityConfig(session.intent.underlying);
   if (session.stage !== "VENUS_CONFIRMED" || session.recovery || !session.venus?.investable ||
-      !sameAddress(position.market, VENUS_VNVDAB_ADDRESS) || position.investmentId !== session.venus.investmentId ||
+      !sameAddress(position.market, config.venusMarketAddress) || position.investmentId !== session.venus.investmentId ||
       !/^[1-9]\d*$/.test(position.underlyingAmountRaw) || !/^[1-9]\d*$/.test(position.vTokenAmountRaw))
     throw new Error("VERIFIED_VENUS_POSITION_REQUIRED");
   return { ...session, recovery: { state: "VENUS_POSITION_VERIFIED", recoveryState: "RECOVERABLE_FROM_VENUS", venusPosition: position,
@@ -18,9 +20,10 @@ export function beginVenusRecovery(session: ExecutionSession, position: VenusPos
 
 export function prepareRedeemRecovery(session: ExecutionSession, action: ExecutionActionV1, expectedUnderlyingRaw: string): ExecutionSession {
   const recovery = session.recovery;
+  const config = equityConfig(session.intent.underlying);
   if (!recovery || recovery.state !== "VENUS_POSITION_VERIFIED" || action.stage !== "VENUS_REDEEM" || action.kind !== "REDEEM" ||
       !sameAddress(action.from, session.owner) || !sameAddress(action.to, recovery.venusPosition.market) ||
-      !sameAddress(action.tokenIn, VENUS_VNVDAB_ADDRESS) || !sameAddress(action.tokenOut ?? "", NVDAB_ADDRESS) ||
+      !sameAddress(action.tokenIn, config.venusMarketAddress) || !sameAddress(action.tokenOut ?? "", config.targetAddress) ||
       action.amountInRaw !== recovery.venusPosition.vTokenAmountRaw || !/^[1-9]\d*$/.test(expectedUnderlyingRaw))
     throw new Error("VENUS_REDEEM_REVIEW_INVALID");
   return { ...session, recovery: { ...recovery, state: "REDEEM_REVIEW_READY", redeemExpectedUnderlyingRaw: expectedUnderlyingRaw },
@@ -29,7 +32,8 @@ export function prepareRedeemRecovery(session: ExecutionSession, action: Executi
 
 export function recordRedeemedNvdab(session: ExecutionSession, evidence: SettlementEvidence): ExecutionSession {
   const recovery = session.recovery;
-  if (!recovery || recovery.state !== "REDEEM_CONFIRMED" || !sameAddress(evidence.outputToken, NVDAB_ADDRESS) ||
+  const config = equityConfig(session.intent.underlying);
+  if (!recovery || recovery.state !== "REDEEM_CONFIRMED" || !sameAddress(evidence.outputToken, config.targetAddress) ||
       !sameAddress(evidence.outputRecipient, session.owner) || evidence.actualAmountInRaw !== recovery.venusPosition.vTokenAmountRaw ||
       !/^[1-9]\d*$/.test(evidence.actualAmountOutRaw)) throw new Error("CANONICAL_REDEMPTION_REQUIRED");
   return { ...session, recovery: { ...recovery, state: "ACTUAL_NVDAB_REDEEMED", recoveryState: "RECOVERABLE_AS_NVDAB", redeemSettlement: evidence },
@@ -38,9 +42,10 @@ export function recordRedeemedNvdab(session: ExecutionSession, evidence: Settlem
 
 export function prepareExitRecovery(session: ExecutionSession, quote: QuoteSnapshot, action: ExecutionActionV1): ExecutionSession {
   const recovery = session.recovery;
+  const config = equityConfig(session.intent.underlying);
   if (!recovery || recovery.state !== "ACTUAL_NVDAB_REDEEMED" || !recovery.redeemSettlement ||
       action.stage !== "EXIT_SWAP" && action.stage !== "EXIT_APPROVAL" ||
-      !sameAddress(quote.from, NVDAB_ADDRESS) || !sameAddress(quote.to, USDT_ADDRESS) ||
+      !sameAddress(quote.from, config.targetAddress) || !sameAddress(quote.to, USDT_ADDRESS) ||
       quote.inputRaw !== recovery.redeemSettlement.actualAmountOutRaw || quote.quoteId !== action.planIdentity ||
       action.amountInRaw !== recovery.redeemSettlement.actualAmountOutRaw ||
       Date.parse(quote.observedAt) <= Date.parse(recovery.redeemSettlement.confirmedAt)) throw new Error("FRESH_EXIT_QUOTE_REQUIRED");

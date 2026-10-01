@@ -41,7 +41,7 @@ const REGISTRY: Record<SupportedUnderlying, EquityConfig> = {
     sourceAddress: "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
     targetAddress: "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
     venusMarketAddress: "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
-    routePreviewSupported: true, executionVerifierStatus: "NOT_VALIDATED",
+    routePreviewSupported: true, executionVerifierStatus: "VALIDATED",
   },
   TSLA: {
     underlying: "TSLA", displayName: "Tesla", shortLabel: "T",
@@ -50,7 +50,7 @@ const REGISTRY: Record<SupportedUnderlying, EquityConfig> = {
     sourceAddress: "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
     targetAddress: "0x5b1910eaad6450e50f816082aa078c41f10c292f",
     venusMarketAddress: "0x97421799419eb782628e73e7220d8e0a207469a3",
-    routePreviewSupported: true, executionVerifierStatus: "NOT_VALIDATED",
+    routePreviewSupported: true, executionVerifierStatus: "VALIDATED",
   },
 };
 

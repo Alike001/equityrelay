@@ -1,7 +1,8 @@
 import "server-only";
 import { decodeEventLog, erc20Abi, TransactionNotFoundError, TransactionReceiptNotFoundError, type Hex } from "viem";
 import { matchTransactionSemantics, type ExecutionActionV1 } from "@/domain/execution/action";
-import { NVDAB_ADDRESS, sameAddress, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { sameAddress } from "@/domain/routing/identity";
+import { venusVerifierProfileByMarket } from "@/domain/equities/venus-profiles";
 import { decodeVenusSupplyCall, inspectVenusSupply, inspectVenusRedeem, venusMarketReadAbi, type VenusRedeemEvidence, type VenusRedeemReason, type VenusSupplyEvidence, type VenusSupplyReason } from "@/domain/execution/venus-evidence";
 import { bscPublicClient, readBscWithRetry } from "@/lib/execution/rpc";
 import type { Address } from "@/types/route";
@@ -103,7 +104,8 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
   let venusSupply: VenusSupplyEvidence | null = null;
   let venusRedeem: VenusRedeemEvidence | null = null;
   if (action.kind === "DEPOSIT") {
-    if (!sameAddress(action.to, VENUS_VNVDAB_ADDRESS) || !sameAddress(action.tokenIn, NVDAB_ADDRESS))
+    const profile = venusVerifierProfileByMarket(action.to);
+    if (!profile || !sameAddress(action.tokenIn, profile.underlyingToken))
       return { status: "FAILED", reason: "VENUS_MARKET_MISMATCH" };
     let call;
     try { call = decodeVenusSupplyCall(action.data); }
@@ -118,8 +120,8 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
         readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [receiver], blockNumber: beforeBlock })),
         readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [receiver], blockNumber: receipt.blockNumber })),
         readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "getAccountSnapshot", args: [receiver], blockNumber: receipt.blockNumber })),
-        readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
-        readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
+        readBscWithRetry(() => client.readContract({ address: profile.underlyingToken, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
+        readBscWithRetry(() => client.readContract({ address: profile.underlyingToken, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
       ]);
     const inspected = inspectVenusSupply({ chainId: 56, transactionHash: hash, transactionFrom: tx.from,
       transactionTo: tx.to!, transactionValueRaw: tx.value.toString(), calldata: tx.input, receiptStatus: receipt.status,
@@ -133,15 +135,16 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
     venusSupply = inspected.evidence;
   }
   if (action.kind === "REDEEM") {
-    if (!sameAddress(action.to, VENUS_VNVDAB_ADDRESS) || !sameAddress(action.tokenIn, VENUS_VNVDAB_ADDRESS) ||
-        !sameAddress(action.tokenOut ?? "", NVDAB_ADDRESS)) return { status: "FAILED", reason: "VENUS_MARKET_MISMATCH" };
+    const profile = venusVerifierProfileByMarket(action.to);
+    if (!profile || !sameAddress(action.tokenIn, profile.market) ||
+        !sameAddress(action.tokenOut ?? "", profile.underlyingToken)) return { status: "FAILED", reason: "VENUS_MARKET_MISMATCH" };
     const beforeBlock = receipt.blockNumber - 1n;
     const position = await Promise.all([
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [action.from], blockNumber: beforeBlock })),
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "balanceOf", args: [action.from], blockNumber: receipt.blockNumber })),
       readBscWithRetry(() => client.readContract({ address: action.to, abi: venusMarketReadAbi, functionName: "getAccountSnapshot", args: [action.from], blockNumber: receipt.blockNumber })),
-      readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
-      readBscWithRetry(() => client.readContract({ address: NVDAB_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
+      readBscWithRetry(() => client.readContract({ address: profile.underlyingToken, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: beforeBlock })),
+      readBscWithRetry(() => client.readContract({ address: profile.underlyingToken, abi: erc20Abi, functionName: "balanceOf", args: [action.to], blockNumber: receipt.blockNumber })),
     ]).then(([balanceBefore,balanceAfter,snapshotAfter,underlyingBefore,underlyingAfter]) => ({
       beforeBlock: beforeBlock.toString(), afterBlock: receipt.blockNumber.toString(),
       vTokenBalanceBeforeRaw: balanceBefore.toString(), vTokenBalanceAfterRaw: balanceAfter.toString(),
@@ -157,7 +160,7 @@ export async function observeCanonicalTransaction(hash: Hex, action: ExecutionAc
     if (inspected.status === "REJECTED") return { status: "FAILED", reason: inspected.reason };
     venusRedeem = inspected.evidence;
     actual = { amountInRaw: inspected.evidence.vTokensRedeemedRaw, amountOutRaw: inspected.evidence.underlyingReceivedRaw,
-      inLogIndex: -1, outLogIndex: transfers.find(x => sameAddress(x.token, NVDAB_ADDRESS) && sameAddress(x.from, action.to) && sameAddress(x.to, action.from))?.logIndex ?? -1 };
+      inLogIndex: -1, outLogIndex: transfers.find(x => sameAddress(x.token, profile.underlyingToken) && sameAddress(x.from, action.to) && sameAddress(x.to, action.from))?.logIndex ?? -1 };
   }
   return { status: "CONFIRMED", txHash: hash, blockNumber: receipt.blockNumber.toString(), blockHash: receipt.blockHash,
     from: tx.from, to: tx.to!, confirmedAt: new Date(Number(block.timestamp) * 1000).toISOString(), confirmations: confirmations.toString(),

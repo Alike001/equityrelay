@@ -1,0 +1,99 @@
+{
+  "fixtureType": "HISTORICAL MAINNET VENUS REDEMPTION FIXTURE",
+  "description": "Public BSC evidence for SPCX redeem. This is not an EquityRelay execution.",
+  "chainId": 56,
+  "transaction": {
+    "hash": "0x4aeb8675fdb616bdf1f45f7130db32501294396104e8bcd98a93eb2221a18052",
+    "blockNumber": "125089852",
+    "blockHash": "0x0cf9db8012f34af6fb0c37b4df997e361275a89e4c1c82d21b2c61a64ce89e6c",
+    "from": "0xbc7e15206602fb13497eca4c132f345e9024f759",
+    "to": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+    "input": "0xdb006a750000000000000000000000000000000000000000000000000000000158edebc8",
+    "value": "0",
+    "decodedFunction": "redeem",
+    "decodedArgs": [
+      "5786954696"
+    ]
+  },
+  "receipt": {
+    "status": "success",
+    "blockNumber": "125089852",
+    "blockHash": "0x0cf9db8012f34af6fb0c37b4df997e361275a89e4c1c82d21b2c61a64ce89e6c",
+    "from": "0xbc7e15206602fb13497eca4c132f345e9024f759",
+    "to": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+    "logs": [
+      {
+        "address": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+        "topics": [
+          "0x4dec04e750ca11537cabcd8a9eab06494de08da3735bc8871cd41250e190bc04"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000004ec7ce105a2d5f19f100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a76400000000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": 427
+      },
+      {
+        "address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000c36dfacc7a125859c106f29b9f2d874ccf29a55a",
+          "0x000000000000000000000000bc7e15206602fb13497eca4c132f345e9024f759"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000032319f9d084cc287b",
+        "logIndex": 429
+      },
+      {
+        "address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "topics": [
+          "0x0226a2f5c1ae0e071aeec3d4ebafcefdc5c549be11f40ed27e76e802acccf374",
+          "0x000000000000000000000000c36dfacc7a125859c106f29b9f2d874ccf29a55a",
+          "0x000000000000000000000000bc7e15206602fb13497eca4c132f345e9024f759"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000032319f9d084cc287b0000000000000000000000000000000000000000000000032319f9d084cc287b",
+        "logIndex": 430
+      },
+      {
+        "address": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000bc7e15206602fb13497eca4c132f345e9024f759",
+          "0x000000000000000000000000c36dfacc7a125859c106f29b9f2d874ccf29a55a"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000000000158edebc8",
+        "logIndex": 431
+      },
+      {
+        "address": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+        "topics": [
+          "0xbd5034ffbd47e4e72a94baa2cdb74c6fad73cb3bcdc13036b72ec8306f5a7646"
+        ],
+        "data": "0x000000000000000000000000bc7e15206602fb13497eca4c132f345e9024f7590000000000000000000000000000000000000000000000032319f9d084cc287b0000000000000000000000000000000000000000000000000000000158edebc80000000000000000000000000000000000000000000000000000000000000001",
+        "logIndex": 432
+      }
+    ]
+  },
+  "block": {
+    "number": "125089852",
+    "hash": "0x0cf9db8012f34af6fb0c37b4df997e361275a89e4c1c82d21b2c61a64ce89e6c",
+    "timestamp": "1790852907"
+  },
+  "marketIdentity": {
+    "market": "0xc36dfacc7a125859c106f29b9f2d874ccf29a55a",
+    "underlying": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+    "symbol": "vSPCXB",
+    "implementationObservedAtValidation": "0xcdfea50f7ceccb24fe804657db8e6c93b689941e"
+  },
+  "position": {
+    "blockExactStatus": "ARCHIVE_STATE_UNAVAILABLE",
+    "reason": "Production RPC returned -32000 not supported for block-specific eth_call.",
+    "currentVTokenBalanceRaw": "1",
+    "currentAccountSnapshot": [
+      "0",
+      "1",
+      "0",
+      "10000002177457928559425268733"
+    ]
+  },
+  "gas": {
+    "gasUsed": "624701",
+    "effectiveGasPriceWei": "70563509"
+  }
+}

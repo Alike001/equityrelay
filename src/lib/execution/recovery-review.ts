@@ -2,7 +2,8 @@ import "server-only";
 import { formatUnits } from "viem";
 import { executionActionV1 } from "@/domain/execution/action";
 import { prepareExitRecovery, prepareRedeemRecovery } from "@/domain/execution/recovery";
-import { NVDAB_ADDRESS, USDT_ADDRESS, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { USDT_ADDRESS } from "@/domain/routing/identity";
+import { equityConfig } from "@/domain/equities/registry";
 import { discoverRepresentations } from "@/lib/binance/rwa";
 import { discoverVenusInvestment } from "@/lib/binance/defi";
 import { buildVenusRedeem } from "@/lib/binance/defi-redeem";
@@ -21,7 +22,10 @@ export async function prepareDurableRedeemReview(routeId: string, wallet: Addres
   const stored = await getExecutionRoute(routeId, wallet);
   const recovery = stored?.session.recovery;
   if (!stored || !recovery || recovery.state !== "VENUS_POSITION_VERIFIED") throw new Error("VERIFIED_VENUS_POSITION_REQUIRED");
-  const [destination, representations] = await Promise.all([discoverVenusInvestment(), discoverRepresentations()]);
+  const config = equityConfig(stored.session.intent.underlying);
+  const [destination, representations] = await Promise.all([
+    discoverVenusInvestment(stored.session.intent.underlying), discoverRepresentations(stored.session.intent.underlying),
+  ]);
   if (!destination?.investable || destination.investmentId !== recovery.venusPosition.investmentId) throw new Error("VENUS_REDISCOVERY_REQUIRED");
   const build = await buildVenusRedeem(wallet, destination, representations.target, recovery.venusPosition.underlyingAmountRaw,
     recovery.venusPosition.vTokenAmountRaw);
@@ -31,9 +35,9 @@ export async function prepareDurableRedeemReview(routeId: string, wallet: Addres
   const action: PreflightAction = { kind: "REDEEM", chainId: 56, from: wallet, to: build.target, valueWei: build.valueWei,
     calldataSummary: `${build.calldataSelector} · ${(build.rawCalldata.length - 2) / 2} bytes`, rawCalldata: build.rawCalldata,
     gasLimit: build.gasLimit, gasPrice: null, maxPriorityFeePerGas: build.maxPriorityFeePerGas, maxFeePerGas: build.maxFeePerGas,
-    tokenIn: VENUS_VNVDAB_ADDRESS, tokenOut: NVDAB_ADDRESS, amountInRaw: build.redeemVTokensRaw,
+    tokenIn: config.venusMarketAddress, tokenOut: config.targetAddress, amountInRaw: build.redeemVTokensRaw,
     minAmountOutRaw: null, amountInHuman: formatUnits(BigInt(build.redeemVTokensRaw), 8), minAmountOutHuman: null,
-    slippagePercent: null, tokenInLabel: "vNVDAB", tokenOutLabel: "NVDAB", approvalSpender: null, approvalAmountRaw: null,
+    slippagePercent: null, tokenInLabel: `v${config.targetSymbol}`, tokenOutLabel: config.targetSymbol, approvalSpender: null, approvalAmountRaw: null,
     approvalExceedsInput: false, authorization: null,
     simulation: redeemSimulation(build.simulationStatus, build.reason, build.preview?.warnings ?? []), simulationPrerequisite: "REQUIRES_CURRENT_BALANCE" };
   const semantic = executionActionV1({ routeId, stage: "VENUS_REDEEM", action, planIdentity: destination.investmentId });
@@ -57,16 +61,17 @@ export async function prepareDurableExitReview(routeId: string, wallet: Address)
   const recovery = stored?.session.recovery;
   if (!stored || !recovery || recovery.state !== "ACTUAL_NVDAB_REDEEMED" || !recovery.redeemSettlement)
     throw new Error("ACTUAL_REDEEMED_NVDAB_REQUIRED");
-  const quote = await requestQuote(2, NVDAB_ADDRESS, USDT_ADDRESS, recovery.redeemSettlement.actualAmountOutRaw, wallet);
+  const config = equityConfig(stored.session.intent.underlying);
+  const quote = await requestQuote(2, config.targetAddress, USDT_ADDRESS, recovery.redeemSettlement.actualAmountOutRaw, wallet);
   if (!quote?.quoteId || Date.parse(quote.observedAt) <= Date.parse(recovery.redeemSettlement.confirmedAt)) throw new Error("FRESH_EXIT_QUOTE_REQUIRED");
   const build = await buildSwapTransaction(quote, wallet, exitSlippage());
   if (!build.evmTx) throw new Error("EXIT_RFQ_UNSUPPORTED");
   const swap = build.actions.find(action => action.kind === "SWAP"), approval = build.actions.find(action => action.kind === "APPROVAL");
   if (!swap) throw new Error("EXIT_BUILD_UNAVAILABLE");
-  const labeledSwap = { ...swap, tokenInLabel: "NVDAB", tokenOutLabel: "USDT" };
+  const labeledSwap = { ...swap, tokenInLabel: config.targetSymbol, tokenOutLabel: "USDT" };
   const review = await createServerReview({ boundary: "EXIT_TO_USDT", owner: wallet, action: labeledSwap,
     approval: approval?.authorization ?? null, quote, destination: null });
-  const nextAction = !review.allowanceSufficient && approval ? { ...approval, tokenInLabel: "NVDAB" } : labeledSwap;
+  const nextAction = !review.allowanceSufficient && approval ? { ...approval, tokenInLabel: config.targetSymbol } : labeledSwap;
   const stage = nextAction.kind === "APPROVAL" ? "EXIT_APPROVAL" : "EXIT_SWAP";
   const semantic = executionActionV1({ routeId, stage, action: nextAction, planIdentity: quote.quoteId });
   const session = { ...prepareExitRecovery(stored.session, quote, semantic), reviews: { ...stored.session.reviews, EXIT_TO_USDT: review } };

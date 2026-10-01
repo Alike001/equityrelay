@@ -20,7 +20,7 @@ export async function prepareLeg2FromMeasured(session: ExecutionSession) {
   if (session.stage !== "ACTUAL_USDT_MEASURED" || !session.leg1Settlement) throw new Error("ACTUAL_USDT_REQUIRED");
   const settlement = session.leg1Settlement;
   let next = session;
-  const { target } = await discoverRepresentations();
+  const { target } = await discoverRepresentations(session.intent.underlying);
   const quote = await requestQuote(2, USDT_ADDRESS, target.address, settlement.actualAmountOutRaw, session.owner);
   if (!quote) throw new Error("FRESH_LEG2_QUOTE_UNAVAILABLE");
   next = recheckPolicy(requoteLeg2(next, quote, target));
@@ -46,7 +46,7 @@ export async function prepareVenusFromMeasured(session: ExecutionSession) {
   if (session.stage !== "ACTUAL_NVDAB_MEASURED" || !session.leg2Settlement || !session.freshTarget) throw new Error("ACTUAL_NVDAB_REQUIRED");
   const settlement = session.leg2Settlement;
   let next = session;
-  const destination = await discoverVenusInvestment();
+  const destination = await discoverVenusInvestment(session.intent.underlying);
   if (!destination) throw new Error("VENUS_DESTINATION_UNAVAILABLE");
   next = rediscoverVenus(next, destination);
   // The DeFi builder rejects a broad Binance approval and replaces it with an exact unsigned approval.

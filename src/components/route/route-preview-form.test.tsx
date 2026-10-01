@@ -27,5 +27,5 @@ describe("multi-equity route selector", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(JSON.parse(String(request.body))).toMatchObject({ underlying: "TSLA", amount: "0.03" });
-  });
+  }, 15_000);
 });

@@ -310,3 +310,25 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** None applied. Keep production previews unavailable and do not substitute dated or local results. Resolve Binance access for the Vercel execution region or deploy the server-side Binance adapter in a supported environment before treating production previews as live-ready.
 - **Suggested improvement:** Return a structured availability reason that distinguishes credentials, region/IP policy, maintenance and rate limiting instead of the generic `40304` response.
 - **Evidence:** Production and local authenticated read-only calls on 2026-10-01; no transaction submitted.
+
+### 2026-10-01 18:12 WAT — Vercel Singapore egress restored genuine Binance Web3 responses
+
+- **API / surface:** Binance Web3 RWA, Trading and DeFi APIs through a Vercel Node function.
+- **Attempt:** Deploy the identical EquityRelay commit and production environment variables with the server function region changed from the default `iad1` region to `sin1`, then request the same NVDA preview.
+- **Expected:** Determine whether the generic `40304` followed the signed request or the deployment egress location.
+- **Actual:** The `iad1` deployment returned Binance business code `40304`. Deployment `dpl_3A2d7nVJCMJ5qccW5cyEs8Q41WeP` served the request from `sin1` (confirmed by the Vercel response-region header) and returned a genuine live NVDA `PASS` with current ratios, quotes and Venus discovery. No request signing, body or credentials changed.
+- **Error/code:** `40304: Service not available` from the default region; no Binance error from `sin1` in the matching request.
+- **Workaround:** Pin the production Vercel function region to `sin1`. Keep failures closed and do not use custom DNS, hard-coded CloudFront IPs, benchmark quotes or a browser-side credential path.
+- **Suggested improvement:** Binance should document server-region availability for Web3 APIs or return a structured reason distinguishing regional service policy from authentication and maintenance failures.
+- **Evidence:** Two production Vercel deployments with identical application code and server-side credentials on 2026-10-01; no transaction submitted.
+
+### 2026-10-01 18:24 WAT — vTSLAB and vSPCXB historical verifier evidence found with bounded RPC reads
+
+- **API / surface:** Canonical BSC transaction, receipt, block and exact Venus log reads through `https://rpc.48.club`.
+- **Attempt:** Validate genuine historical supplies and redemptions for the live vTSLAB and vSPCXB markets using exact market addresses/topics and bounded 1,000-block windows.
+- **Expected:** Establish whether both markets use the same verifiable Venus Core mint/redeem semantics as vNVDAB without spending user funds.
+- **Actual:** Each market produced a successful direct `mint(uint256)` example and a successful `redeem(uint256)` example with one matching Venus event, one matching underlying transfer and one matching vToken transfer. Both markets returned implementation `0xCDfea50f7CECCB24Fe804657DB8E6c93b689941e`. The production RPC returned `-32000 not supported` for block-specific historical `eth_call`; current balances corroborate the event result but are not treated as block-exact state evidence.
+- **Error/code:** `-32000: not supported` for historical block-state calls. No error in transaction, receipt, block or bounded log reads.
+- **Workaround:** Store sanitized public receipt fixtures, require exact canonical event and transfer agreement, and record archive-state unavailability explicitly. Runtime verification still performs fresh market identity and block-state reads for future transactions.
+- **Suggested improvement:** RPC providers should publish archive-state support independently from transaction/receipt/log retention and return a stable pruned-state capability code.
+- **Evidence:** Public BSC mainnet transactions and receipts on 2026-10-01; no EquityRelay transaction submitted.

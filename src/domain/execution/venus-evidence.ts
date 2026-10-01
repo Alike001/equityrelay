@@ -1,5 +1,6 @@
 import { decodeEventLog, decodeFunctionData, erc20Abi, parseAbi, type Hex } from "viem";
-import { BSC_CHAIN_ID, isAddress, NVDAB_ADDRESS, sameAddress, VENUS_VNVDAB_ADDRESS } from "@/domain/routing/identity";
+import { BSC_CHAIN_ID, isAddress, sameAddress } from "@/domain/routing/identity";
+import { venusVerifierProfileByMarket } from "@/domain/equities/venus-profiles";
 import type { Address } from "@/types/route";
 
 // The event signatures follow the current Venus Core VToken interface. The
@@ -82,8 +83,11 @@ export function inspectVenusRedeem(input: {
     accountSnapshotAfter: readonly [string, string, string, string]; marketUnderlyingBalanceBeforeRaw: string; marketUnderlyingBalanceAfterRaw: string };
 }): { status: "VERIFIED"; evidence: VenusRedeemEvidence } | { status: "REJECTED"; reason: VenusRedeemReason } {
   const reject = (reason: VenusRedeemReason) => ({ status: "REJECTED" as const, reason });
-  if (!sameAddress(input.transactionFrom, input.expectedWallet) || !sameAddress(input.transactionTo, VENUS_VNVDAB_ADDRESS) || input.transactionValueRaw !== "0")
+  const profile = venusVerifierProfileByMarket(input.transactionTo);
+  if (!profile || !sameAddress(input.transactionFrom, input.expectedWallet) || input.transactionValueRaw !== "0")
     return reject("VENUS_REDEEMER_MISMATCH");
+  if (!profile.redeemSelectors.includes(input.calldata.slice(0, 10).toLowerCase() as `0x${string}`))
+    return reject("VENUS_REDEEM_CALL_NOT_IDENTIFIED");
   let called: string;
   try { called = decodeVenusRedeemCall(input.calldata); } catch { return reject("VENUS_REDEEM_CALL_NOT_IDENTIFIED"); }
   if (called !== input.expectedVTokensRaw) return reject("VENUS_REDEEM_AMOUNT_MISMATCH");
@@ -91,25 +95,25 @@ export function inspectVenusRedeem(input: {
   const transfers: bigint[] = [];
   const vTokenTransfers: bigint[] = [];
   for (const log of input.logs) {
-    if (sameAddress(log.address, VENUS_VNVDAB_ADDRESS)) {
+    if (sameAddress(log.address, profile.market)) {
       try {
         const decoded = decodeEventLog({ abi: venusRedeemAbi, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]], strict: true });
         if (decoded.eventName === "Redeem") events.push({ redeemer: decoded.args.redeemer as Address, underlying: decoded.args.redeemAmount,
           tokens: decoded.args.redeemTokens, balance: decoded.args.totalSupply });
       } catch { /* Ignore unrelated market logs. */ }
     }
-    if (sameAddress(log.address, NVDAB_ADDRESS)) {
+    if (sameAddress(log.address, profile.underlyingToken)) {
       try {
         const decoded = decodeEventLog({ abi: erc20Abi, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]], strict: true });
-        if (decoded.eventName === "Transfer" && sameAddress(decoded.args.from, VENUS_VNVDAB_ADDRESS) && sameAddress(decoded.args.to, input.expectedWallet))
+        if (decoded.eventName === "Transfer" && sameAddress(decoded.args.from, profile.market) && sameAddress(decoded.args.to, input.expectedWallet))
           transfers.push(decoded.args.value);
       } catch { /* Ignore unrelated underlying logs. */ }
     }
-    if (sameAddress(log.address, VENUS_VNVDAB_ADDRESS)) {
+    if (sameAddress(log.address, profile.market)) {
       try {
         const decoded = decodeEventLog({ abi: erc20Abi, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]], strict: true });
         if (decoded.eventName === "Transfer" && sameAddress(decoded.args.from, input.expectedWallet) &&
-            sameAddress(decoded.args.to, VENUS_VNVDAB_ADDRESS)) vTokenTransfers.push(decoded.args.value);
+            sameAddress(decoded.args.to, profile.market)) vTokenTransfers.push(decoded.args.value);
       } catch { /* Ignore unrelated market logs. */ }
     }
   }
@@ -131,7 +135,7 @@ export function inspectVenusRedeem(input: {
     } catch { return reject("VENUS_REDEEM_POSITION_EVIDENCE_MISMATCH"); }
   }
   return { status: "VERIFIED", evidence: { transactionHash: input.transactionHash, blockNumber: input.blockNumber,
-    market: VENUS_VNVDAB_ADDRESS, underlying: NVDAB_ADDRESS, redeemer: input.expectedWallet,
+    market: profile.market, underlying: profile.underlyingToken, redeemer: input.expectedWallet,
     vTokensRedeemedRaw: event.tokens.toString(), underlyingReceivedRaw: event.underlying.toString(),
     resultingVTokenBalanceRaw: event.balance.toString() } };
 }
@@ -161,7 +165,7 @@ export function inspectVenusSupply(input: {
   expectedAmountRaw: string;
   marketIdentity: { market: Address; underlying: Address; symbol: string; implementation: Address };
   logs: VenusReceiptLog[];
-  position: {
+  position?: {
     beforeBlock: string;
     afterBlock: string;
     receiverVTokenBalanceBeforeRaw: string;
@@ -174,12 +178,13 @@ export function inspectVenusSupply(input: {
   const reject = (reason: VenusSupplyReason): VenusSupplyInspection => ({ status: "REJECTED", reason });
   if (input.chainId !== BSC_CHAIN_ID) return reject("VENUS_WRONG_CHAIN");
   if (input.receiptStatus !== "success") return reject("VENUS_RECEIPT_FAILED");
-  if (!sameAddress(input.marketIdentity.market, VENUS_VNVDAB_ADDRESS) ||
+  const profile = venusVerifierProfileByMarket(input.marketIdentity.market);
+  if (!profile ||
       !sameAddress(input.transactionTo, input.marketIdentity.market) || !sameAddress(input.receiptTo, input.marketIdentity.market))
     return reject("VENUS_MARKET_MISMATCH");
-  if (!sameAddress(input.marketIdentity.underlying, NVDAB_ADDRESS)) return reject("VENUS_UNDERLYING_MISMATCH");
-  if (input.marketIdentity.symbol !== "vNVDAB" || !isAddress(input.marketIdentity.implementation) ||
-      sameAddress(input.marketIdentity.implementation, "0x0000000000000000000000000000000000000000"))
+  if (!sameAddress(input.marketIdentity.underlying, profile.underlyingToken)) return reject("VENUS_UNDERLYING_MISMATCH");
+  if (input.marketIdentity.symbol !== profile.marketSymbol || !isAddress(input.marketIdentity.implementation) ||
+      !sameAddress(input.marketIdentity.implementation, profile.implementation))
     return reject("VENUS_MARKET_IDENTITY_INVALID");
   if (!sameAddress(input.transactionFrom, input.expectedWallet) || input.transactionValueRaw !== "0")
     return reject("VENUS_TRANSACTION_SEMANTICS_MISMATCH");
@@ -187,6 +192,8 @@ export function inspectVenusSupply(input: {
   let call: ReturnType<typeof decodeVenusSupplyCall>;
   try { call = decodeVenusSupplyCall(input.calldata); }
   catch { return reject("VENUS_MINT_CALL_NOT_IDENTIFIED"); }
+  if (!profile.depositSelectors.includes(input.calldata.slice(0, 10).toLowerCase() as `0x${string}`) ||
+      !profile.supplyEvents.includes(call.eventType)) return reject("VENUS_MINT_CALL_NOT_IDENTIFIED");
   if (call.amountRaw !== input.expectedAmountRaw || BigInt(call.amountRaw) <= 0n) return reject("VENUS_MINT_AMOUNT_MISMATCH");
   const supplier = input.expectedWallet;
   const receiver = call.receiver ?? supplier;
@@ -228,7 +235,7 @@ export function inspectVenusSupply(input: {
   if (vTokenTransfers.length !== 1 || vTokenTransfers[0] !== supplied.tokens)
     return reject("VENUS_VTOKEN_TRANSFER_MISSING_OR_AMBIGUOUS");
 
-  try {
+  if (input.position) try {
     const before = BigInt(input.position.receiverVTokenBalanceBeforeRaw);
     const after = BigInt(input.position.receiverVTokenBalanceAfterRaw);
     const underlyingBefore = BigInt(input.position.marketUnderlyingBalanceBeforeRaw);
@@ -245,5 +252,5 @@ export function inspectVenusSupply(input: {
     market: input.marketIdentity.market, underlying: input.marketIdentity.underlying, supplier, receiver,
     underlyingAmountRaw: supplied.amount.toString(), vTokensMintedRaw: supplied.tokens.toString(),
     eventType: supplied.eventType, eventAccountBalanceRaw: supplied.accountBalanceAfter.toString(),
-    resultingVTokenBalanceRaw: input.position.receiverVTokenBalanceAfterRaw } };
+    resultingVTokenBalanceRaw: input.position?.receiverVTokenBalanceAfterRaw ?? supplied.accountBalanceAfter.toString() } };
 }

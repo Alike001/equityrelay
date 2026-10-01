@@ -1,11 +1,11 @@
 import Decimal from "decimal.js";
 import { decimalText, normalizedShares } from "@/domain/exposure/decimal";
 import { recheckLeg2AfterLeg1 } from "@/domain/policy/evaluate";
-import { NVDAB_ADDRESS, sameAddress, USDT_ADDRESS, validateDestination, validateRepresentation } from "@/domain/routing/identity";
+import { sameAddress, USDT_ADDRESS, validateDestination, validateRepresentation } from "@/domain/routing/identity";
 import type { AuthorizationReview } from "@/types/preflight";
 import type { Address, DestinationSnapshot, QuoteSnapshot, RepresentationSnapshot, RouteDecision } from "@/types/route";
 import type { ProductConfirmationBoundary, ConfirmedTransaction, ExecutionReview, ExecutionSession, ExecutionStage, SettlementEvidence, TransactionObservation, VerifiedExecutionReceipt } from "@/types/execution";
-import { assertExecutionVerifierValidated } from "@/domain/equities/registry";
+import { assertExecutionVerifierValidated, equityConfig } from "@/domain/equities/registry";
 
 const raw = /^[1-9]\d*$/;
 const txHash = /^0x[a-fA-F0-9]{64}$/;
@@ -42,7 +42,7 @@ export function beginExecutionSession(id: string, owner: Address, preview: Route
       preview.evidence.leg1.outputRaw !== preview.evidence.leg2.inputRaw) throw new Error("ROUTE_POLICY_PASS_REQUIRED");
   validateRepresentation(preview.evidence.source, "source");
   validateRepresentation(preview.evidence.target, "target");
-  return { id, owner, intent: { underlying: "NVDA", sourceRepresentation: "ondo", amount: preview.amount, destination: "venus", maxExposureLossBps: preview.maxExposureLossBps, takerAddress: owner },
+  return { id, owner, intent: { underlying: preview.underlying, sourceRepresentation: "ondo", amount: preview.amount, destination: "venus", maxExposureLossBps: preview.maxExposureLossBps, takerAddress: owner },
     stage: "ROUTE_POLICY_PASS", originalSource: preview.evidence.source, originalSourceRaw: preview.evidence.sourceRaw, sourceShares: preview.sourceShares,
     initialQuote: preview.evidence.leg1, initialLeg2Indicative: preview.evidence.leg2, reviews: {}, confirmations: [], submitted: {}, leg1Settlement: null, leg2Settlement: null,
     freshLeg2: null, freshTarget: null, venus: null, policyRecheck: null, testSetup: null, recovery: null, events: [] };
@@ -62,9 +62,10 @@ export function prepareReview(session: ExecutionSession, review: ExecutionReview
     return { ...advance(session, "LEG2_REVIEW", "CHANGE_REPRESENTATION_REVIEWED"), reviews: { ...session.reviews, [boundary]: review } };
   }
   at(session, "VENUS_REDISCOVERED");
+  const config = equityConfig(session.intent.underlying);
   if (!session.leg2Settlement || !session.venus?.investable || !review.destination || review.destination.investmentId !== session.venus.investmentId)
     throw new Error("FRESH_VENUS_DISCOVERY_REQUIRED");
-  reviewAction(review, session.owner, NVDAB_ADDRESS, session.leg2Settlement.actualAmountOutRaw, null, null);
+  reviewAction(review, session.owner, config.targetAddress, session.leg2Settlement.actualAmountOutRaw, null, null);
   if (!review.allowanceSufficient && !sameAddress(review.approval!.spender, review.action.to!)) throw new Error("VENUS_TARGET_UNVERIFIED");
   if (review.action.amountInRaw !== session.leg2Settlement.actualAmountOutRaw) throw new Error("ACTUAL_NVDAB_REQUIRED");
   return { ...advance(session, "VENUS_REVIEW", "SUPPLY_TO_VENUS_REVIEWED"), reviews: { ...session.reviews, [boundary]: review } };
@@ -118,7 +119,7 @@ export function measureSettlement(session: ExecutionSession, leg: "LEG1" | "LEG2
   const submitted = session.submitted[`${leg}_SWAP`];
   if (!submitted) throw new Error("CONFIRMED_RECEIPT_REQUIRED");
   assertConfirmed(evidence, submitted.transactionHash);
-  const expectedToken = leg === "LEG1" ? USDT_ADDRESS : NVDAB_ADDRESS;
+  const expectedToken = leg === "LEG1" ? USDT_ADDRESS : equityConfig(session.intent.underlying).targetAddress;
   const expectedInput = leg === "LEG1" ? session.originalSourceRaw : session.leg1Settlement?.actualAmountOutRaw;
   if (!sameAddress(evidence.outputToken, expectedToken) || !sameAddress(evidence.outputRecipient, session.owner) ||
       !raw.test(evidence.actualAmountInRaw) || evidence.actualAmountInRaw !== expectedInput || !raw.test(evidence.actualAmountOutRaw)) throw new Error("INVALID_SETTLEMENT_EVIDENCE");
@@ -149,8 +150,9 @@ export function recheckPolicy(session: ExecutionSession): ExecutionSession {
 
 export function rediscoverVenus(session: ExecutionSession, destination: DestinationSnapshot): ExecutionSession {
   at(session, "ACTUAL_NVDAB_MEASURED");
-  validateDestination(destination);
-  if (!session.leg2Settlement || !destination.investable || !sameAddress(destination.assetAddress, NVDAB_ADDRESS) ||
+  const config = equityConfig(session.intent.underlying);
+  validateDestination(destination, session.intent.underlying);
+  if (!session.leg2Settlement || !destination.investable || !sameAddress(destination.assetAddress, config.targetAddress) ||
       Date.parse(destination.observedAt) <= Date.parse(session.leg2Settlement.confirmedAt)) throw new Error("FRESH_VENUS_DISCOVERY_REQUIRED");
   return { ...advance(session, "VENUS_REDISCOVERED", "VENUS_REDISCOVERED"), venus: destination };
 }

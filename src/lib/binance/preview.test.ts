@@ -76,7 +76,7 @@ describe("live preview orchestration with controlled API responses", () => {
     const calls = queue(reply(liveRows(underlying, "1.01", "1")), reply([first]), reply([second]),
       reply({ list: [{ investmentId: `live-${underlying}`, protocolName: "Venus" }] }), reply(venus(underlying)));
     const result = await buildPreview(assetIntent);
-    expect(result).toMatchObject({ kind: "decision", underlying, displayName: config.displayName, executionVerifierStatus: "NOT_VALIDATED" });
+    expect(result).toMatchObject({ kind: "decision", underlying, displayName: config.displayName, executionVerifierStatus: "VALIDATED" });
     expect(calls[2].url).toContain(`toTokenAddress=${encodeURIComponent(config.targetAddress)}`);
   });
   it("normalizes each asset with its live source and target ratios", async () => {

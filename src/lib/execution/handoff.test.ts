@@ -48,9 +48,10 @@ describe("final server action delivery",()=>{
     mocks.query.mockReset().mockResolvedValueOnce({rowCount:1,rows:[row({status:"PENDING",tx_hash:`0x${"1".repeat(64)}`})]});
     await expect(deliverWalletAction(input)).rejects.toThrow("ACTION_ALREADY_RESERVED_OR_SUBMITTED");
   });
-  it("rejects wallet action delivery for a preview-only asset even if a durable row were injected",async()=>{
-    mocks.query.mockReset().mockResolvedValueOnce({rowCount:1,rows:[row({session_snapshot:{...session,intent:{...session.intent,underlying:"SPCX"}}})]});
-    await expect(deliverWalletAction(input)).rejects.toThrow("EXECUTION_VERIFIER_NOT_VALIDATED");
-    expect(mocks.reserve).not.toHaveBeenCalled();
+  it.each(["SPCX","TSLA"] as const)("delivers a persisted action for validated %s without changing its semantics",async underlying=>{
+    mocks.query.mockReset().mockResolvedValueOnce({rowCount:1,rows:[row({session_snapshot:{...session,intent:{...session.intent,underlying}}})]}).mockResolvedValueOnce({rows:[]});
+    const delivered=await deliverWalletAction(input);
+    expect(delivered.transaction).toEqual({from:wallet,to:action.to,data:action.data,value:"0x0",chainId:"0x38"});
+    expect(mocks.reserve).toHaveBeenCalledOnce();
   });
 });
