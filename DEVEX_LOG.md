@@ -343,3 +343,14 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** None. Keep TSLA unavailable and fail closed until a fresh live quote succeeds. Historical verifier validation remains separate from current route liquidity.
 - **Suggested improvement:** Expose a structured available-size range or minimum/maximum executable amount with the quote error so clients can distinguish a temporary no-liquidity window from an unsupported pair.
 - **Evidence:** Genuine production read-only Binance responses and Vercel runtime logs on 2026-10-01; no transaction submitted.
+
+### 2026-10-08 00:50 WAT — Production RPC failed because historical canonical evidence was pruned
+
+- **API / surface:** BSC JSON-RPC readiness probe from local runtime and Vercel `sin1`.
+- **Attempt:** Re-run the complete fixed historical probe against the configured 48 Club endpoint: chain ID, transaction, receipt, containing block, finalized block and an exact one-block vNVDAB Mint log query.
+- **Expected:** All six reads agree on the known transaction at block `124836339`.
+- **Actual:** Chain ID and the current finalized tag succeeded. The historical block, transaction and receipt were unavailable, and the exact log request returned `-32000: header not found`. The application correctly returned HTTP 503 `RPC_VERIFICATION_UNAVAILABLE`.
+- **Error/code:** `-32000: header not found`; classified as canonical probe evidence unavailable rather than a chain or finality-policy failure.
+- **Workaround:** Replace the production primary with NodeReal's documented BSC endpoint after it passed the complete probe locally and on five consecutive Vercel `sin1` requests. No fallback was configured because no second independent provider passed every required operation.
+- **Suggested improvement:** RPC providers should publish archive retention separately for blocks, transactions, receipts and logs, and return a stable pruned-history capability error.
+- **Evidence:** Read-only production and local probes on 2026-10-08; no transaction submitted.

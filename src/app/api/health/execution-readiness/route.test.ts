@@ -18,7 +18,8 @@ describe("production execution readiness route", () => {
     vi.mocked(canonicalRpcReadiness).mockResolvedValue({ status: "UNAVAILABLE", reason: "RPC_HTTP_FORBIDDEN" });
     const response = await GET();
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ status: "BLOCKED", code: "RPC_VERIFICATION_UNAVAILABLE", reason: "RPC_HTTP_FORBIDDEN" });
+    await expect(response.json()).resolves.toEqual({ status: "BLOCKED", canonicalRpcStatus: "UNAVAILABLE",
+      activeProviderRole: null, fallbackQualified: false, code: "RPC_VERIFICATION_UNAVAILABLE", reason: "RPC_HTTP_FORBIDDEN" });
   });
 
   it("reports the configured confirmation and finalized policy with canonical evidence", async () => {
@@ -26,7 +27,8 @@ describe("production execution readiness route", () => {
       probeBlock: "124836339", boundedLogCount: 1 });
     const response = await GET();
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ status: "READY_READ_ONLY", chainId: 56,
+    await expect(response.json()).resolves.toMatchObject({ status: "READY_READ_ONLY", canonicalRpcStatus: "READY",
+      activeProviderRole: "PRIMARY", fallbackQualified: false, chainId: 56,
       minConfirmations: 3, requireFinalized: true, rpcProbeBlock: "124836339", boundedLogCount: 1,
       executionArmed: false, walletSendCodeReleased: true, deprecatedRelayLocked: true });
   });
