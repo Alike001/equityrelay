@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authenticateSelectedProvider, disconnectSelectedProvider, logoutEquityRelay, requestBscSwitch, validateSelectedProviderSession } from "@/lib/wallet/auth";
 import { discoverWalletProviders, providerSelection, providerSelectionKey, readProviderSelection, restoreSelectedProvider,
   type WalletProviderOption } from "@/lib/wallet/providers";
+import { setSelectedWalletProvider } from "@/lib/wallet/selected-provider";
 
 function short(address: string) { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
 function announceAuthChange() { window.dispatchEvent(new Event("equityrelay-auth-changed")); }
@@ -31,6 +32,7 @@ export function WalletAuth() {
     if (clearProvider) {
       localStorage.removeItem(providerSelectionKey);
       setSelectedId(null);
+      setSelectedWalletProvider(null);
     }
     setStatus(message);
     announceAuthChange();
@@ -67,9 +69,10 @@ export function WalletAuth() {
         await logout("Wallet selection, account, or chain no longer matches. Authenticate again.");
         return;
       }
+      setSelectedWalletProvider(savedProvider);
       setWallet(session.wallet);
       sessionActive.current = true;
-      setStatus("Wallet authenticated. Mainnet execution remains disabled.");
+      setStatus("Wallet authenticated.");
     }).catch(() => setStatus("Authentication state is unavailable."));
   }, [discoveryReady, logout, providers]);
 
@@ -90,12 +93,13 @@ export function WalletAuth() {
     setWrongChain(false);
     setDisconnectGuidance(null);
     setSelectedId(option.id);
+    setSelectedWalletProvider(option);
     localStorage.setItem(providerSelectionKey, JSON.stringify(providerSelection(option)));
     try {
       const authenticated = await authenticateSelectedProvider(option.provider, fetch);
       setWallet(authenticated);
       sessionActive.current = true;
-      setStatus("Wallet authenticated. Mainnet execution remains disabled.");
+      setStatus("Wallet authenticated.");
       announceAuthChange();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Wallet authentication unavailable.";

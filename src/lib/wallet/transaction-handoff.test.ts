@@ -33,7 +33,7 @@ describe("selected-provider transaction handoff", () => {
     const fetcher = vi.fn(async () => responses.shift()!);
     await expect(prepareLockedWalletHandoff({ provider: selected, routeId: "route-id", stage: "LEG1_SWAP",
       idempotencyKey: "11111111-1111-4111-8111-111111111111", fetcher: fetcher as typeof fetch }))
-      .resolves.toBe(hash);
+      .resolves.toEqual({ txHash: hash, stepId: "step-id" });
     expect(fetcher).toHaveBeenNthCalledWith(1,"/api/execution/routes/route-id/confirmations",expect.objectContaining({ method:"POST" }));
     expect(fetcher).toHaveBeenNthCalledWith(2,"/api/execution/routes/route-id/actions/step-id",expect.objectContaining({ method:"POST" }));
     expect(selected.request).toHaveBeenCalledWith({ method: "eth_sendTransaction", params: [transaction] });

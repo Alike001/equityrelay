@@ -1,7 +1,7 @@
 import "server-only";
 import type { ExecutionActionV1 } from "@/domain/execution/action";
 import { recoveryAfterProductStop } from "@/domain/execution/recovery";
-import { transaction } from "@/lib/db/pool";
+import { executionPool, transaction } from "@/lib/db/pool";
 import { prepareInitialExecutionReview } from "@/lib/execution/initial-review";
 import { prepareDurableLeg2Review } from "@/lib/execution/post-settlement";
 import { prepareDurableExitReview } from "@/lib/execution/recovery-review";
@@ -48,6 +48,14 @@ export async function invalidateStaleQuoteReview(routeId: string, wallet: Addres
       WHERE route_id=$1 AND wallet=$2`, [routeId,wallet.toLowerCase(),JSON.stringify(next),next.stage,recoveryAfterProductStop(next)]);
     return stage;
   });
+}
+
+export async function invalidateCurrentStaleQuoteReview(routeId: string, wallet: Address,
+  stage: ExecutionActionV1["stage"]): Promise<void> {
+  const current = await executionPool().query(`SELECT step_id,action_hash FROM execution_steps
+    WHERE route_id=$1 AND stage=$2 AND status='REVIEW_READY'`, [routeId,stage]);
+  if (current.rowCount !== 1) throw new Error("STALE_REVIEW_CONFLICT");
+  await invalidateStaleQuoteReview(routeId,wallet,String(current.rows[0].step_id),String(current.rows[0].action_hash));
 }
 
 export async function regenerateStaleQuoteReview(routeId: string, wallet: Address, stage: ExecutionActionV1["stage"]): Promise<unknown> {

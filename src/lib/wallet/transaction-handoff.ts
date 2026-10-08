@@ -5,6 +5,8 @@ import type { ExecutionActionV1 } from "@/domain/execution/action";
 export type WalletHandoffState = "READY_FOR_WALLET_REVIEW" | "QUOTE_REFRESH_REQUIRED" |
   "WAITING_FOR_CANONICAL_CONFIRMATION" | "CONFIRMED" | "FAILED";
 
+export type WalletHandoffResult = { txHash: `0x${string}`; stepId: string };
+
 export async function handoffSelectedWalletTransaction(provider: Eip1193Provider,
   transaction: WalletTransactionRequest): Promise<`0x${string}`> {
   const [accounts, chainId] = await Promise.all([
@@ -24,7 +26,7 @@ export async function handoffSelectedWalletTransaction(provider: Eip1193Provider
 // Server action delivery remains authoritative and refuses unless the runtime
 // execution arm is enabled. The browser cannot provide transaction semantics.
 export async function prepareLockedWalletHandoff(input: { provider: Eip1193Provider; routeId: string;
-  stage: ExecutionActionV1["stage"]; idempotencyKey: string; fetcher?: typeof fetch }): Promise<`0x${string}`> {
+  stage: ExecutionActionV1["stage"]; idempotencyKey: string; fetcher?: typeof fetch }): Promise<WalletHandoffResult> {
   const fetcher = input.fetcher ?? fetch;
   const confirmationResponse = await fetcher(`/api/execution/routes/${input.routeId}/confirmations`, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -40,5 +42,5 @@ export async function prepareLockedWalletHandoff(input: { provider: Eip1193Provi
   });
   if (!actionResponse.ok) throw new Error((await actionResponse.json() as { code?: string }).code ?? "ACTION_DELIVERY_UNAVAILABLE");
   const delivered = await actionResponse.json() as { transaction: WalletTransactionRequest };
-  return handoffSelectedWalletTransaction(input.provider, delivered.transaction);
+  return { txHash: await handoffSelectedWalletTransaction(input.provider, delivered.transaction), stepId: confirmation.stepId };
 }

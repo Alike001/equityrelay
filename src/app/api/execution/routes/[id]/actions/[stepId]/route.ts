@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSameOrigin, sessionCookie, sessionWallet } from "@/lib/auth/siwe";
 import type { ExecutionActionV1 } from "@/domain/execution/action";
 import { deliverWalletAction } from "@/lib/execution/handoff";
-import { invalidateStaleQuoteReview, regenerateStaleQuoteReview } from "@/lib/execution/refresh";
+import { invalidateStaleQuoteReview } from "@/lib/execution/refresh";
 import type { Address } from "@/types/route";
 
 export const runtime = "nodejs";
@@ -31,9 +31,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const code = error instanceof Error ? error.message : "ACTION_DELIVERY_UNAVAILABLE";
     if (code === "QUOTE_REFRESH_REQUIRED" && wallet && ids && parsed) {
       try {
-        const stage = await invalidateStaleQuoteReview(ids.id,wallet as Address,ids.stepId,parsed.actionHash);
-        const refreshed = await regenerateStaleQuoteReview(ids.id,wallet as Address,stage);
-        return Response.json({ code, state: "QUOTE_REFRESH_REQUIRED", refreshed }, { status: 409, headers: { "Cache-Control": "no-store" } });
+        await invalidateStaleQuoteReview(ids.id,wallet as Address,ids.stepId,parsed.actionHash);
+        return Response.json({ code, state: "QUOTE_REFRESH_REQUIRED" }, { status: 409, headers: { "Cache-Control": "no-store" } });
       } catch { /* Return the deterministic refusal below. */ }
     }
     const status = code === "MAINNET_EXECUTION_NOT_ARMED" ? 423 :

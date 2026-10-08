@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { PreflightAction, PreflightResult, PreflightStage, RoutePreflight } from "@/types/preflight";
+import { getSelectedWalletProvider } from "@/lib/wallet/selected-provider";
+import { runSetupApproval, type SetupApprovalStatus } from "@/lib/wallet/setup-approval-flow";
+
+type SetupReview = {
+  state: string; stepId?: string; stage?: "TEST_SETUP_APPROVAL" | "TEST_SETUP_SWAP"; actionKind?: string;
+  actionHash?: string; routeVersion?: number; usdtInputRaw?: string; usdtInputHuman?: string | null;
+  expectedSourceRaw?: string; expectedSourceHuman?: string | null; sourceSymbol?: string; chainId?: number;
+  tokenLabel?: string; tokenAddress?: string; approvalSpender?: string | null; approvalAmountRaw?: string | null;
+  gasLimit?: string | null; quoteObservedAt?: string; quoteExpiresAt?: string; quoteFreshness?: "FRESH";
+};
+type ExecutionHealth = { status: string; executionArmed: boolean; walletSendCodeReleased: boolean;
+  deprecatedRelayLocked: boolean; canonicalRpcStatus: string };
 
 function shortNumber(value: string | null): string {
   if (value === null) return "—";
@@ -70,8 +82,11 @@ function FullReview({ data }: { data: RoutePreflight }) {
   const [savedRoute, setSavedRoute] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [firstStep, setFirstStep] = useState<{ actionKind: string; amountHuman: string | null; tokenLabel: string;
-    minimumReceiveHuman: string | null; actionHash: string; simulationStatus: string } | null>(null);
+  const [firstStep, setFirstStep] = useState<SetupReview | null>(null);
+  const [health, setHealth] = useState<ExecutionHealth | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<SetupApprovalStatus | "REJECTED_MANUAL_REVIEW" | "QUOTE_REFRESH_REQUIRED" | null>(null);
+  const [confirmed, setConfirmed] = useState<{ txHash: string; stepId: string } | null>(null);
+  const mounted = useRef(true);
   useEffect(() => {
     const refresh = () => { void fetch("/api/auth/session", { cache: "no-store" }).then(async response => {
       const session = await response.json() as { wallet?: string | null };
@@ -80,6 +95,13 @@ function FullReview({ data }: { data: RoutePreflight }) {
     refresh();
     window.addEventListener("equityrelay-auth-changed", refresh);
     return () => window.removeEventListener("equityrelay-auth-changed", refresh);
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void fetch("/api/health/execution-readiness", { cache: "no-store" }).then(async response => {
+      if (response.ok) setHealth(await response.json() as ExecutionHealth);
+    }).catch(() => setHealth(null));
+    return () => { mounted.current = false; };
   }, []);
   const quoteWallet = data.leg1.actions[0]?.from;
   const walletMatches = !!wallet && !!quoteWallet && wallet.toLowerCase() === quoteWallet.toLowerCase();
@@ -97,15 +119,40 @@ function FullReview({ data }: { data: RoutePreflight }) {
     } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
     finally { setSaving(false); }
   }
-  async function prepareFirstStep() {
-    if (!savedRoute || firstStep) return;
+  async function prepareFirstStep(force = false) {
+    if (!savedRoute || firstStep && !force) return;
     setSaving(true); setSaveError("");
     try {
-      const response = await fetch(`/api/execution/routes/${savedRoute}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const response = await fetch(`/api/execution/routes/${savedRoute}/review`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phase: "TEST_SETUP" }) });
       if (!response.ok) throw new Error("A fresh read-only action could not be built. The route may need another review.");
-      setFirstStep(await response.json() as NonNullable<typeof firstStep>);
+      setFirstStep(await response.json() as SetupReview);
+      setHandoffStatus(null); setConfirmed(null);
     } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
     finally { setSaving(false); }
+  }
+  async function sendSetupApproval() {
+    if (!savedRoute || firstStep?.stage !== "TEST_SETUP_APPROVAL" || !walletMatches || confirmed) return;
+    setSaving(true); setSaveError(""); setHandoffStatus(null);
+    try {
+      const healthResponse = await fetch("/api/health/execution-readiness", { cache: "no-store" });
+      const currentHealth = healthResponse.ok ? await healthResponse.json() as ExecutionHealth : null;
+      setHealth(currentHealth);
+      if (!currentHealth?.executionArmed) throw new Error("MAINNET_EXECUTION_NOT_ARMED");
+      if (firstStep.quoteExpiresAt && Date.parse(firstStep.quoteExpiresAt) <= Date.now()) {
+        setHandoffStatus("QUOTE_REFRESH_REQUIRED"); return;
+      }
+      const selected = getSelectedWalletProvider();
+      if (!selected) throw new Error("SELECTED_WALLET_PROVIDER_REQUIRED");
+      const result = await runSetupApproval({ provider: selected.provider, routeId: savedRoute,
+        onStatus: setHandoffStatus, active: () => mounted.current });
+      if (result.status === "CONFIRMED") setConfirmed({ txHash: result.txHash, stepId: result.stepId });
+    } catch (error) {
+      const value = error as Error & { code?: number };
+      if (value.message === "QUOTE_REFRESH_REQUIRED") setHandoffStatus("QUOTE_REFRESH_REQUIRED");
+      else if (value.code === 4001 || /reject|denied|closed/i.test(value.message)) setHandoffStatus("REJECTED_MANUAL_REVIEW");
+      else { setHandoffStatus("FAILED"); setSaveError(value.message || "Wallet handoff failed."); }
+    } finally { if (mounted.current) setSaving(false); }
   }
   const approvals = [data.leg1, data.leg2Indicative, data.venusDepositIndicative].flatMap(stage => stage.actions).filter(action => action.kind === "APPROVAL");
   return <section className="preflight-review" id="preflight-review" aria-live="polite"><div className="preflight-review-head"><div><div className="eyebrow">READ-ONLY PREFLIGHT · BNB CHAIN</div><h2>{data.routePreview.displayName} → Venus</h2><p>Binance-built transaction actions and EquityRelay’s bounded approval replacement. Nothing has been signed or submitted.</p><p className="verification-note">Execution verification: <strong>{data.routePreview.executionVerifierStatus === "VALIDATED" ? "VALIDATED" : "PENDING · PREVIEW ONLY"}</strong></p></div><span className={`overall-tag ${data.overallPreflightState.toLowerCase()}`}>{data.overallPreflightState.replaceAll("_", " ")}</span></div>
@@ -114,11 +161,33 @@ function FullReview({ data }: { data: RoutePreflight }) {
     <Stage number="01" stage={data.leg1} /><Stage number="02" stage={data.leg2Indicative} /><Stage number="03" stage={data.venusDepositIndicative} />
     <div className="safety-summary"><div className="eyebrow">SAFETY SUMMARY</div><h3>What the evidence says</h3><p>EquityRelay never asks for unlimited token access when the route only requires a fixed amount.</p><ul>{data.safetyWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul><p>Future execution requires three separate confirmations: leave Ondo, convert the actual settled USDT, and supply the actual received destination representation to Venus. This review is read-only.</p></div>
     <div className="execution-review-save"><div><span className="eyebrow">AUTHENTICATED EXECUTION REVIEW</span><p>{!executionVerified ? "This asset supports live route preview only. Canonical execution verification is still pending." : savedRoute ? "Review saved with your authenticated wallet. No transaction was prepared for signing." : walletMatches ? "Your signed-in wallet matches the quote address. Save a fresh policy-passing route record for later review." : wallet ? "The signed-in wallet differs from the quote address. Rebuild the quote for your signed-in wallet." : "Connect and authenticate the quote wallet above to save this review."}</p></div>
-      {!executionVerified ? <span className="preview-only-notice">PREVIEW ONLY · EXECUTION VERIFIER NOT VALIDATED</span> : savedRoute ? <><Link href={`/proof/route/${savedRoute}`}>View route status ↗</Link><button type="button" onClick={() => void prepareFirstStep()} disabled={saving || !!firstStep}>{firstStep ? "First action reviewed" : saving ? "Building…" : "Build read-only first action"}</button></> : <button type="button" onClick={() => void saveReview()} disabled={!walletMatches || saving}>{saving ? "Refreshing route…" : "Save read-only review"}</button>}
-      {firstStep && <div className="saved-action-summary"><span className="handoff-state">READY FOR WALLET REVIEW</span><p>First action: {firstStep.actionKind === "APPROVAL" ? "bounded approval" : "swap"} · {firstStep.amountHuman ?? "Exact raw amount"} {firstStep.tokenLabel} · Binance simulation {firstStep.simulationStatus.replaceAll("_", " ")}.</p><strong>MAINNET EXECUTION STILL LOCKED</strong><p>The final wallet handoff will refresh expired quotes before exposing transaction fields. No transaction request is enabled in this build.</p><details><summary>Inspect action identity</summary><code>{firstStep.actionHash}</code></details></div>}
+      {!executionVerified ? <span className="preview-only-notice">PREVIEW ONLY · EXECUTION VERIFIER NOT VALIDATED</span> : savedRoute ? <><Link href={`/proof/route/${savedRoute}`}>View route status ↗</Link><button type="button" onClick={() => void prepareFirstStep()} disabled={saving || !!firstStep}>{firstStep ? "Test setup reviewed" : saving ? "Building…" : "Review test setup"}</button></> : <button type="button" onClick={() => void saveReview()} disabled={!walletMatches || saving}>{saving ? "Refreshing route…" : "Save read-only review"}</button>}
+      {firstStep && <div className="saved-action-summary setup-operator-review">
+        <span className="handoff-state">TEST SETUP — OUTSIDE PRODUCT ROUTE</span>
+        {firstStep.stage === "TEST_SETUP_APPROVAL" ? <>
+          <h3>Exact USDT approval</h3><dl className="setup-review-grid">
+            <div><dt>Stage</dt><dd>{firstStep.stage}</dd></div><div><dt>Amount</dt><dd>{firstStep.usdtInputHuman ?? firstStep.usdtInputRaw} USDT</dd></div>
+            <div><dt>Token</dt><dd>USDT</dd></div><div><dt>Spender</dt><dd>{firstStep.approvalSpender}</dd></div>
+            <div><dt>Chain</dt><dd>BNB Smart Chain · 56</dd></div><div><dt>Estimated gas</dt><dd>{firstStep.gasLimit ?? "Unavailable"} units</dd></div>
+            <div><dt>Expected acquisition</dt><dd>{firstStep.expectedSourceHuman ?? firstStep.expectedSourceRaw} {firstStep.sourceSymbol}</dd></div>
+            <div><dt>Quote</dt><dd>{handoffStatus === "QUOTE_REFRESH_REQUIRED" ? "Refresh required" : firstStep.quoteFreshness ?? "Freshness unavailable"}</dd></div>
+          </dl><details><summary>Inspect action identity</summary><code>{firstStep.actionHash}</code><p>Route version {firstStep.routeVersion} · observed {firstStep.quoteObservedAt}</p></details>
+          {!confirmed && handoffStatus !== "REJECTED_MANUAL_REVIEW" && handoffStatus !== "QUOTE_REFRESH_REQUIRED" &&
+            <button type="button" onClick={() => void sendSetupApproval()} disabled={saving || !walletMatches || !health?.executionArmed}>
+              {saving ? "Waiting…" : "Review exact USDT approval in wallet"}</button>}
+          {!health?.executionArmed && <p><strong>Execution disabled.</strong> The server will not deliver wallet transaction fields.</p>}
+        </> : firstStep.stage === "TEST_SETUP_SWAP" ? <><h3>Setup approval is not required</h3><p>Live allowance is sufficient. Stop before the setup swap; this approval-only interface will not send a swap.</p></>
+        : <p>No setup approval action is available.</p>}
+        {handoffStatus === "REQUESTING_WALLET" && <p role="status">Wallet review requested. Verify this is the exact USDT approval.</p>}
+        {handoffStatus === "WAITING_FOR_CANONICAL_CONFIRMATION" && <p role="status"><strong>WAITING FOR CANONICAL CONFIRMATION</strong></p>}
+        {handoffStatus === "REJECTED_MANUAL_REVIEW" && <p role="alert"><strong>REJECTED · MANUAL REVIEW REQUIRED</strong><br />No retry was attempted and no new wallet prompt will be opened.</p>}
+        {handoffStatus === "QUOTE_REFRESH_REQUIRED" && <p role="alert"><strong>QUOTE REFRESH REQUIRED</strong><br />The expired action will not be sent.<br /><button type="button" onClick={() => { setFirstStep(null); void prepareFirstStep(true); }} disabled={saving}>Refresh setup review</button></p>}
+        {handoffStatus === "FAILED" && <p role="alert"><strong>FAILED</strong> · Canonical reconciliation or wallet handoff stopped.</p>}
+        {confirmed && <div className="first-approval-confirmed"><strong>FIRST APPROVAL CONFIRMED</strong><p>Transaction {confirmed.txHash}</p><p>Step {confirmed.stepId} · route status CONFIRMED · canonical confirmation CONFIRMED.</p><p>Approval confirmed. Stop before the setup swap.</p></div>}
+      </div>}
       {saveError && <small role="alert">{saveError}</small>}</div>
-    <div className="execution-steps"><div className="eyebrow">FUTURE CONFIRMATIONS</div><div><strong>01 · Leave Ondo</strong><span>Review bounded source approval and minimum USDT receive</span><button type="button" disabled>Review · mainnet execution not armed</button></div><div><strong>02 · Change representation</strong><span>Locked until leg 1 confirms and actual USDT is measured</span></div><div><strong>03 · Supply to Venus</strong><span>Locked until leg 2 confirms and the actual compatible representation is measured</span></div></div>
-    <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> NOTHING HAS BEEN SIGNED OR SUBMITTED <span>·</span> MAINNET EXECUTION NOT ARMED</div>
+    <div className="execution-steps"><div className="eyebrow">FUTURE CONFIRMATIONS</div><div><strong>01 · Leave Ondo</strong><span>Review bounded source approval and minimum USDT receive</span><button type="button" disabled>{health?.executionArmed ? "Locked until test setup confirms" : "Review · execution disabled"}</button></div><div><strong>02 · Change representation</strong><span>Locked until leg 1 confirms and actual USDT is measured</span></div><div><strong>03 · Supply to Venus</strong><span>Locked until leg 2 confirms and the actual compatible representation is measured</span></div></div>
+    <div className="preflight-finish">READ-ONLY PREFLIGHT <span>·</span> {health?.executionArmed ? "EXECUTION ENABLED FOR EXPLICIT REVIEWED WALLET ACTIONS" : "EXECUTION DISABLED"}</div>
   </section>;
 }
 

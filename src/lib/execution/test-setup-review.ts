@@ -10,6 +10,19 @@ import { createServerReview } from "./review";
 import { getExecutionRoute, persistPreparedReview } from "./repository";
 import type { Address, QuoteSnapshot } from "@/types/route";
 import { equityConfig } from "@/domain/equities/registry";
+import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
+import { mainnetExecutionArmed } from "@/domain/execution/guard";
+import { MAX_REVIEW_QUOTE_AGE_MS } from "./readiness";
+
+function human(raw: string, decimals: number | null | undefined): string | null {
+  return decimals == null ? null : decimalText(rawToDecimal(raw, decimals));
+}
+
+function safeQuoteExpiry(quote: QuoteSnapshot): string {
+  const reviewExpiry = Date.parse(quote.observedAt) + MAX_REVIEW_QUOTE_AGE_MS;
+  const providerExpiry = quote.expiresAt ? Date.parse(quote.expiresAt) : Number.POSITIVE_INFINITY;
+  return new Date(Math.min(reviewExpiry, providerExpiry)).toISOString();
+}
 
 async function freshSetupQuote(wallet: Address, source: Address, requiredRaw: string, baseUsdtRaw: string): Promise<QuoteSnapshot> {
   for (const bps of [10000n,10025n,10050n,10075n,10100n,10200n,10500n,11000n,12500n,15000n,20000n]) {
@@ -26,7 +39,8 @@ export async function prepareDurableTestSetupReview(routeId: string, wallet: Add
   const config = equityConfig(stored.session.intent.underlying);
   const balance = await readBscWithRetry(() => bscPublicClient().readContract({ address: stored.session.originalSource.address,
     abi: erc20Abi, functionName: "balanceOf", args: [wallet] }));
-  if (balance >= BigInt(stored.session.originalSourceRaw)) return { state: "NOT_REQUIRED" as const, executionArmed: false };
+  if (balance >= BigInt(stored.session.originalSourceRaw)) return { state: "NOT_REQUIRED" as const,
+    sourceSymbol: config.sourceSymbol, executionArmed: mainnetExecutionArmed() };
   const quote = await freshSetupQuote(wallet, stored.session.originalSource.address, stored.session.originalSourceRaw, stored.session.initialQuote.outputRaw);
   const build = await buildSwapTransaction(quote, wallet, "0.5");
   if (!build.evmTx) throw new Error("TEST_SETUP_RFQ_UNSUPPORTED");
@@ -44,6 +58,11 @@ export async function prepareDurableTestSetupReview(routeId: string, wallet: Add
       authorization: nextAction.authorization, gas: { gasLimit: nextAction.gasLimit, gasPrice: nextAction.gasPrice,
         maxFeePerGas: nextAction.maxFeePerGas, maxPriorityFeePerGas: nextAction.maxPriorityFeePerGas } });
   return { state: "TEST_SETUP_REVIEW_READY" as const, label: "TEST SETUP — NOT PART OF EQUITYRELAY ROUTE", stepId: step.id,
-    stage, actionHash: step.actionHash, usdtInputRaw: quote.inputRaw, expectedSourceRaw: quote.outputRaw,
-    sourceSymbol: config.sourceSymbol, executionArmed: false };
+    stage, actionKind: nextAction.kind, actionHash: step.actionHash, routeVersion: stored.version + 1,
+    usdtInputRaw: quote.inputRaw, usdtInputHuman: human(quote.inputRaw, quote.inputDecimals),
+    expectedSourceRaw: quote.outputRaw, expectedSourceHuman: human(quote.outputRaw, quote.outputDecimals),
+    sourceSymbol: config.sourceSymbol, chainId: 56, tokenLabel: "USDT", tokenAddress: USDT_ADDRESS,
+    approvalSpender: nextAction.approvalSpender, approvalAmountRaw: nextAction.approvalAmountRaw,
+    gasLimit: nextAction.gasLimit, quoteObservedAt: quote.observedAt, quoteExpiresAt: safeQuoteExpiry(quote),
+    quoteFreshness: "FRESH" as const, executionArmed: mainnetExecutionArmed() };
 }
