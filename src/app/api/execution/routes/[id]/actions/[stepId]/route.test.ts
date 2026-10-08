@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ session: vi.fn(), deliver: vi.fn(), invalidate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: vi.fn(), deliver: vi.fn(), refresh: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "opaque" }) }) }));
 vi.mock("@/lib/auth/siwe", () => ({ sessionCookie: "equityrelay_session", requireSameOrigin: () => {}, sessionWallet: mocks.session }));
 vi.mock("@/lib/execution/handoff", () => ({ deliverWalletAction: mocks.deliver }));
-vi.mock("@/lib/execution/refresh", () => ({ invalidateStaleQuoteReview: mocks.invalidate }));
+vi.mock("@/lib/execution/refresh", () => ({ refreshStaleQuoteReview: mocks.refresh }));
 import { POST } from "./route";
 
 const routeId = "11111111-1111-4111-8111-111111111111", stepId = "22222222-2222-4222-8222-222222222222";
@@ -37,12 +37,13 @@ describe("authenticated wallet action delivery", () => {
     expect(response.status).toBe(409);
     expect(mocks.deliver).not.toHaveBeenCalled();
   });
-  it("invalidates a stale quote and requires an explicit fresh review", async () => {
+  it("invalidates and regenerates a stale action through the shared refresh path", async () => {
     mocks.deliver.mockRejectedValue(new Error("QUOTE_REFRESH_REQUIRED"));
-    mocks.invalidate.mockResolvedValue("LEG1_SWAP");
+    mocks.refresh.mockResolvedValue({ stepId: "new-step", actionHash: `0x${"b".repeat(64)}` });
     const response = await POST(request(body),context);
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ code: "QUOTE_REFRESH_REQUIRED", state: "QUOTE_REFRESH_REQUIRED" });
-    expect(mocks.invalidate).toHaveBeenCalledWith(routeId,wallet,stepId,actionHash);
+    expect(await response.json()).toMatchObject({ code: "QUOTE_REFRESH_REQUIRED", state: "QUOTE_REFRESH_REQUIRED",
+      refreshed: { stepId: "new-step" } });
+    expect(mocks.refresh).toHaveBeenCalledWith(routeId,wallet,stepId,actionHash);
   });
 });

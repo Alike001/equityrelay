@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ session: vi.fn(), issue: vi.fn(), invalidate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: vi.fn(), issue: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "opaque" }) }) }));
 vi.mock("@/lib/auth/siwe", () => ({ sessionCookie: "equityrelay_session", requireSameOrigin: () => {}, sessionWallet: mocks.session }));
 vi.mock("@/lib/execution/repository", () => ({ issueConfirmation: mocks.issue }));
-vi.mock("@/lib/execution/refresh", () => ({ invalidateCurrentStaleQuoteReview: mocks.invalidate }));
 import { POST } from "./route";
 
 const id = "11111111-1111-4111-8111-111111111111", wallet = "0x1111111111111111111111111111111111111111";
@@ -38,6 +37,5 @@ describe("authenticated durable confirmation API", () => {
     const response = await POST(request({ operation: "ISSUE", stage: "TEST_SETUP_APPROVAL", idempotencyKey: id }), context);
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ code: "QUOTE_REFRESH_REQUIRED", state: "QUOTE_REFRESH_REQUIRED" });
-    expect(mocks.invalidate).toHaveBeenCalledWith(id,wallet,"TEST_SETUP_APPROVAL");
   });
 });

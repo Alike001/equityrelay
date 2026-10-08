@@ -119,12 +119,12 @@ function FullReview({ data }: { data: RoutePreflight }) {
     } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
     finally { setSaving(false); }
   }
-  async function prepareFirstStep(force = false) {
+  async function prepareFirstStep(force = false, refresh = false) {
     if (!savedRoute || firstStep && !force) return;
     setSaving(true); setSaveError("");
     try {
       const response = await fetch(`/api/execution/routes/${savedRoute}/review`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase: "TEST_SETUP" }) });
+        body: JSON.stringify(refresh ? { phase: "TEST_SETUP",operation: "REFRESH" } : { phase: "TEST_SETUP" }) });
       if (!response.ok) throw new Error("A fresh read-only action could not be built. The route may need another review.");
       setFirstStep(await response.json() as SetupReview);
       setHandoffStatus(null); setConfirmed(null);
@@ -181,7 +181,7 @@ function FullReview({ data }: { data: RoutePreflight }) {
         {handoffStatus === "REQUESTING_WALLET" && <p role="status">Wallet review requested. Verify this is the exact USDT approval.</p>}
         {handoffStatus === "WAITING_FOR_CANONICAL_CONFIRMATION" && <p role="status"><strong>WAITING FOR CANONICAL CONFIRMATION</strong></p>}
         {handoffStatus === "REJECTED_MANUAL_REVIEW" && <p role="alert"><strong>REJECTED · MANUAL REVIEW REQUIRED</strong><br />No retry was attempted and no new wallet prompt will be opened.</p>}
-        {handoffStatus === "QUOTE_REFRESH_REQUIRED" && <p role="alert"><strong>QUOTE REFRESH REQUIRED</strong><br />The expired action will not be sent.<br /><button type="button" onClick={() => { setFirstStep(null); void prepareFirstStep(true); }} disabled={saving}>Refresh setup review</button></p>}
+        {handoffStatus === "QUOTE_REFRESH_REQUIRED" && <p role="alert"><strong>QUOTE REFRESH REQUIRED</strong><br />The expired action will not be sent.<br /><button type="button" onClick={() => void prepareFirstStep(true,true)} disabled={saving}>Refresh setup review</button></p>}
         {handoffStatus === "FAILED" && <p role="alert"><strong>FAILED</strong> · Canonical reconciliation or wallet handoff stopped.</p>}
         {confirmed && <div className="first-approval-confirmed"><strong>FIRST APPROVAL CONFIRMED</strong><p>Transaction {confirmed.txHash}</p><p>Step {confirmed.stepId} · route status CONFIRMED · canonical confirmation CONFIRMED.</p><p>Approval confirmed. Stop before the setup swap.</p></div>}
       </div>}

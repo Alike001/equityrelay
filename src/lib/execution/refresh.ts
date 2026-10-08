@@ -6,6 +6,7 @@ import { prepareInitialExecutionReview } from "@/lib/execution/initial-review";
 import { prepareDurableLeg2Review } from "@/lib/execution/post-settlement";
 import { prepareDurableExitReview } from "@/lib/execution/recovery-review";
 import { prepareDurableTestSetupReview } from "@/lib/execution/test-setup-review";
+import { quoteForAction, requireCurrentQuote } from "@/lib/execution/readiness";
 import type { ExecutionSession } from "@/types/execution";
 import type { Address } from "@/types/route";
 
@@ -56,6 +57,32 @@ export async function invalidateCurrentStaleQuoteReview(routeId: string, wallet:
     WHERE route_id=$1 AND stage=$2 AND status='REVIEW_READY'`, [routeId,stage]);
   if (current.rowCount !== 1) throw new Error("STALE_REVIEW_CONFLICT");
   await invalidateStaleQuoteReview(routeId,wallet,String(current.rows[0].step_id),String(current.rows[0].action_hash));
+}
+
+export async function refreshStaleQuoteReview(routeId: string, wallet: Address, stepId: string,
+  expectedActionHash: string): Promise<unknown> {
+  const stage = await invalidateStaleQuoteReview(routeId,wallet,stepId,expectedActionHash);
+  return regenerateStaleQuoteReview(routeId,wallet,stage);
+}
+
+export async function refreshCurrentTestSetupReview(routeId: string, wallet: Address): Promise<unknown> {
+  const current = await executionPool().query(`SELECT r.session_snapshot,s.step_id,s.stage,s.status,s.action_hash,s.action_v1
+    FROM execution_routes r JOIN execution_steps s ON s.route_id=r.route_id
+    WHERE r.route_id=$1 AND r.wallet=$2 AND s.stage LIKE 'TEST_SETUP_%'
+    ORDER BY s.created_at DESC,s.attempt DESC LIMIT 1`, [routeId,wallet.toLowerCase()]);
+  if (current.rowCount !== 1) throw new Error("TEST_SETUP_NOT_REVIEWABLE");
+  const row = current.rows[0] as { session_snapshot: ExecutionSession; step_id: string; stage: ExecutionActionV1["stage"];
+    status: string; action_hash: string; action_v1: ExecutionActionV1 };
+  if (row.status !== "REVIEW_READY") throw new Error("TEST_SETUP_REFRESH_REQUIRES_MANUAL_REVIEW");
+  const quote = quoteForAction(row.session_snapshot,row.action_v1);
+  if (!quote) throw new Error("TEST_SETUP_NOT_REVIEWABLE");
+  try {
+    requireCurrentQuote(quote,row.action_v1.planIdentity);
+    throw new Error("TEST_SETUP_REVIEW_STILL_FRESH");
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "QUOTE_REVIEW_EXPIRED") throw error;
+  }
+  return refreshStaleQuoteReview(routeId,wallet,row.step_id,row.action_hash);
 }
 
 export async function regenerateStaleQuoteReview(routeId: string, wallet: Address, stage: ExecutionActionV1["stage"]): Promise<unknown> {

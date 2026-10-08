@@ -58,7 +58,8 @@ describe("first test setup operator flow", () => {
   });
 
   it("does not mislabel or send TEST_SETUP_SWAP when allowance is already sufficient", async () => {
-    const fetcher = vi.fn(async (input: string | URL | Request) => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init;
       const url = String(input);
       if (url.endsWith("/api/auth/session")) return response({ wallet });
       if (url.endsWith("/api/health/execution-readiness")) return response({ status:"READY_ARMED",executionArmed:true,
@@ -75,6 +76,38 @@ describe("first test setup operator flow", () => {
     fireEvent.click(await screen.findByRole("button",{name:"Review test setup"}));
     expect(await screen.findByText("Setup approval is not required")).toBeTruthy();
     expect(screen.queryByRole("button",{name:/Review exact USDT approval/})).toBeNull();
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("uses the explicit REFRESH operation for an expired setup review without opening the wallet", async () => {
+    const reviews = [{ state:"TEST_SETUP_REVIEW_READY",stage:"TEST_SETUP_APPROVAL",actionKind:"APPROVAL",
+      actionHash:`0x${"a".repeat(64)}`,routeVersion:2,usdtInputHuman:"5.01",expectedSourceHuman:"0.022",sourceSymbol:"NVDAon",
+      approvalSpender:"0x3333333333333333333333333333333333333333",gasLimit:"50000",quoteFreshness:"FRESH",
+      quoteExpiresAt:"2020-01-01T00:00:00.000Z" },
+    { state:"TEST_SETUP_REVIEW_READY",stage:"TEST_SETUP_APPROVAL",actionKind:"APPROVAL",actionHash:`0x${"b".repeat(64)}`,
+      routeVersion:4,usdtInputHuman:"5.02",expectedSourceHuman:"0.022",sourceSymbol:"NVDAon",
+      approvalSpender:"0x3333333333333333333333333333333333333333",gasLimit:"50001",quoteFreshness:"FRESH",
+      quoteExpiresAt:new Date(Date.now()+30_000).toISOString() }];
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init;
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return response({ wallet });
+      if (url.endsWith("/api/health/execution-readiness")) return response({ status:"READY_ARMED",executionArmed:true,
+        walletSendCodeReleased:true,deprecatedRelayLocked:true,canonicalRpcStatus:"READY" });
+      if (url.endsWith("/api/execution/routes")) return response({ routeId:"route" });
+      if (url.endsWith("/review")) return response(reviews.shift());
+      throw new Error(`unexpected ${url}`);
+    });
+    vi.stubGlobal("fetch",fetcher);
+    render(<PreflightReview result={data} />);
+    await waitFor(() => expect(screen.getByText(/signed-in wallet matches/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button",{name:"Save read-only review"}));
+    fireEvent.click(await screen.findByRole("button",{name:"Review test setup"}));
+    fireEvent.click(await screen.findByRole("button",{name:"Review exact USDT approval in wallet"}));
+    fireEvent.click(await screen.findByRole("button",{name:"Refresh setup review"}));
+    await waitFor(() => expect(screen.getByText("5.02 USDT")).toBeTruthy());
+    const reviewCalls = fetcher.mock.calls.filter(call => String(call[0]).endsWith("/review"));
+    expect(JSON.parse(String(reviewCalls[1]?.[1]?.body))).toEqual({ phase:"TEST_SETUP",operation:"REFRESH" });
     expect(mocks.run).not.toHaveBeenCalled();
   });
 });
