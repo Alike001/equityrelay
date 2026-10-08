@@ -125,7 +125,11 @@ function FullReview({ data }: { data: RoutePreflight }) {
     try {
       const response = await fetch(`/api/execution/routes/${savedRoute}/review`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(refresh ? { phase: "TEST_SETUP",operation: "REFRESH" } : { phase: "TEST_SETUP" }) });
-      if (!response.ok) throw new Error("A fresh read-only action could not be built. The route may need another review.");
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { code?: string } | null;
+        if (body?.code === "GAS_ESTIMATE_UNAVAILABLE") throw new Error("BLOCKED · GAS ESTIMATE UNAVAILABLE");
+        throw new Error("A fresh read-only action could not be built. The route may need another review.");
+      }
       setFirstStep(await response.json() as SetupReview);
       setHandoffStatus(null); setConfirmed(null);
     } catch (error) { setSaveError(error instanceof Error ? error.message : "Review unavailable."); }
@@ -155,6 +159,7 @@ function FullReview({ data }: { data: RoutePreflight }) {
     } finally { if (mounted.current) setSaving(false); }
   }
   const approvals = [data.leg1, data.leg2Indicative, data.venusDepositIndicative].flatMap(stage => stage.actions).filter(action => action.kind === "APPROVAL");
+  const setupApprovalGasReady = firstStep?.stage === "TEST_SETUP_APPROVAL" && !!firstStep.gasLimit && /^[1-9]\d*$/.test(firstStep.gasLimit);
   return <section className="preflight-review" id="preflight-review" aria-live="polite"><div className="preflight-review-head"><div><div className="eyebrow">READ-ONLY PREFLIGHT · BNB CHAIN</div><h2>{data.routePreview.displayName} → Venus</h2><p>Binance-built transaction actions and EquityRelay’s bounded approval replacement. Nothing has been signed or submitted.</p><p className="verification-note">Execution verification: <strong>{data.routePreview.executionVerifierStatus === "VALIDATED" ? "VALIDATED" : "PENDING · PREVIEW ONLY"}</strong></p></div><span className={`overall-tag ${data.overallPreflightState.toLowerCase()}`}>{data.overallPreflightState.replaceAll("_", " ")}</span></div>
     <div className="preflight-summary authorization-summary"><div><small>ROUTE POLICY</small><strong className="good">{data.routePolicy}</strong></div><div><small>TRANSACTION BUILD</small><strong>{[data.leg1, data.leg2Indicative, data.venusDepositIndicative].every(stage => stage.buildStatus === "READY") ? "READY" : "UNAVAILABLE"}</strong></div><div><small>AUTHORIZATION SAFETY</small><strong>{data.authorizationSafety.replaceAll("_", " ")}</strong></div><div><small>SIMULATION</small><strong>{data.overallPreflightState === "WALLET_STATE_BLOCKED" ? "WALLET STATE BLOCKED" : data.overallPreflightState.replaceAll("_", " ")}</strong></div><div><small>EXECUTION READINESS</small><strong>{data.executionReadiness.replaceAll("_", " ")}</strong></div></div>
     <p className="approval-count">{approvals.length} unsigned approvals in the reviewed plan · Projected exposure retained: {shortNumber(data.routePreview.retentionPercent)}%</p>
@@ -172,7 +177,8 @@ function FullReview({ data }: { data: RoutePreflight }) {
             <div><dt>Expected acquisition</dt><dd>{firstStep.expectedSourceHuman ?? firstStep.expectedSourceRaw} {firstStep.sourceSymbol}</dd></div>
             <div><dt>Quote</dt><dd>{handoffStatus === "QUOTE_REFRESH_REQUIRED" ? "Refresh required" : firstStep.quoteFreshness ?? "Freshness unavailable"}</dd></div>
           </dl><details><summary>Inspect action identity</summary><code>{firstStep.actionHash}</code><p>Route version {firstStep.routeVersion} · observed {firstStep.quoteObservedAt}</p></details>
-          {!confirmed && handoffStatus !== "REJECTED_MANUAL_REVIEW" && handoffStatus !== "QUOTE_REFRESH_REQUIRED" &&
+          {!setupApprovalGasReady && <p role="alert"><strong>BLOCKED · GAS ESTIMATE UNAVAILABLE</strong></p>}
+          {setupApprovalGasReady && !confirmed && handoffStatus !== "REJECTED_MANUAL_REVIEW" && handoffStatus !== "QUOTE_REFRESH_REQUIRED" &&
             <button type="button" onClick={() => void sendSetupApproval()} disabled={saving || !walletMatches || !health?.executionArmed}>
               {saving ? "Waiting…" : "Review exact USDT approval in wallet"}</button>}
           {!health?.executionArmed && <p><strong>Execution disabled.</strong> The server will not deliver wallet transaction fields.</p>}

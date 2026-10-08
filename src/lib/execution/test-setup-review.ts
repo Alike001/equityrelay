@@ -13,6 +13,7 @@ import { equityConfig } from "@/domain/equities/registry";
 import { decimalText, rawToDecimal } from "@/domain/exposure/decimal";
 import { mainnetExecutionArmed } from "@/domain/execution/guard";
 import { MAX_REVIEW_QUOTE_AGE_MS } from "./readiness";
+import { ensureApprovalGasLimit } from "./approval-gas";
 
 function human(raw: string, decimals: number | null | undefined): string | null {
   return decimals == null ? null : decimalText(rawToDecimal(raw, decimals));
@@ -49,7 +50,8 @@ export async function prepareDurableTestSetupReview(routeId: string, wallet: Add
   const labeled = { ...swap, tokenInLabel: "USDT", tokenOutLabel: config.sourceSymbol };
   const review = await createServerReview({ boundary: "TEST_SETUP", owner: wallet, action: labeled,
     approval: approval?.authorization ?? null, quote, destination: null });
-  const nextAction = !review.allowanceSufficient && approval ? { ...approval, tokenInLabel: "USDT" } : labeled;
+  const selectedAction = !review.allowanceSufficient && approval ? { ...approval, tokenInLabel: "USDT" } : labeled;
+  const nextAction = selectedAction.kind === "APPROVAL" ? await ensureApprovalGasLimit(selectedAction) : selectedAction;
   const stage = nextAction.kind === "APPROVAL" ? "TEST_SETUP_APPROVAL" : "TEST_SETUP_SWAP";
   const session = prepareTestSetup(stored.session, quote, review);
   const step = await persistPreparedReview(routeId, wallet, stored.version, session,

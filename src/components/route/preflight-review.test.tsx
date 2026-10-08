@@ -110,4 +110,44 @@ describe("first test setup operator flow", () => {
     expect(JSON.parse(String(reviewCalls[1]?.[1]?.body))).toEqual({ phase:"TEST_SETUP",operation:"REFRESH" });
     expect(mocks.run).not.toHaveBeenCalled();
   });
+
+  it("blocks wallet handoff when the server cannot persist approval gas evidence", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init; const url = String(input);
+      if (url.endsWith("/api/auth/session")) return response({ wallet });
+      if (url.endsWith("/api/health/execution-readiness")) return response({ status:"READY_ARMED",executionArmed:true,
+        walletSendCodeReleased:true,deprecatedRelayLocked:true,canonicalRpcStatus:"READY" });
+      if (url.endsWith("/api/execution/routes")) return response({ routeId:"route" });
+      if (url.endsWith("/review")) return response({ code:"GAS_ESTIMATE_UNAVAILABLE" },409);
+      throw new Error(`unexpected ${url}`);
+    });
+    vi.stubGlobal("fetch",fetcher);
+    render(<PreflightReview result={data} />);
+    await waitFor(() => expect(screen.getByText(/signed-in wallet matches/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button",{name:"Save read-only review"}));
+    fireEvent.click(await screen.findByRole("button",{name:"Review test setup"}));
+    expect((await screen.findByRole("alert")).textContent).toContain("BLOCKED · GAS ESTIMATE UNAVAILABLE");
+    expect(screen.queryByRole("button",{name:"Review exact USDT approval in wallet"})).toBeNull();
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the send button if an approval response lacks positive persisted gas", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init; const url = String(input);
+      if (url.endsWith("/api/auth/session")) return response({ wallet });
+      if (url.endsWith("/api/health/execution-readiness")) return response({ status:"READY_ARMED",executionArmed:true,
+        walletSendCodeReleased:true,deprecatedRelayLocked:true,canonicalRpcStatus:"READY" });
+      if (url.endsWith("/api/execution/routes")) return response({ routeId:"route" });
+      if (url.endsWith("/review")) return response({ state:"TEST_SETUP_REVIEW_READY",stage:"TEST_SETUP_APPROVAL",actionKind:"APPROVAL",
+        actionHash:`0x${"a".repeat(64)}`,routeVersion:2,usdtInputHuman:"5.01",expectedSourceHuman:"0.022",sourceSymbol:"NVDAon",
+        approvalSpender:"0x3333333333333333333333333333333333333333",gasLimit:null,quoteFreshness:"FRESH" });
+      throw new Error(`unexpected ${url}`);
+    });
+    vi.stubGlobal("fetch",fetcher); render(<PreflightReview result={data} />);
+    await waitFor(() => expect(screen.getByText(/signed-in wallet matches/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button",{name:"Save read-only review"}));
+    fireEvent.click(await screen.findByRole("button",{name:"Review test setup"}));
+    expect((await screen.findByRole("alert")).textContent).toContain("GAS ESTIMATE UNAVAILABLE");
+    expect(screen.queryByRole("button",{name:"Review exact USDT approval in wallet"})).toBeNull();
+  });
 });
