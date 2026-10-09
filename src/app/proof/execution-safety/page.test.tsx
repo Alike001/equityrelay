@@ -16,5 +16,7 @@ describe("execution safety proof", () => {
     expect(
       screen.getByText("NO APPROVAL · NO SIGNATURE · NO BROADCAST"),
     ).toBeTruthy();
+    expect(screen.getByText(/user cancelled it/i)).toBeTruthy();
+    expect(screen.getByText(/not currently an automatic action-delivery gate/i)).toBeTruthy();
   });
 });

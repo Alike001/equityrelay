@@ -7,6 +7,8 @@ export type RouterSecurityDecision =
   | "ROUTER_AUTHORIZATION_ACCEPTABLE"
   | "SECURITY_REFUSED_UNVERIFIED_ROUTER";
 
+export type RouterDecisionEnforcement = "RECORDED_OPERATOR_DECISION";
+
 export type RouterBuildEvidence = {
   route: string;
   quoteId: string;
@@ -34,6 +36,7 @@ export const ROUTER_PROVENANCE_EVIDENCE = {
     "0xb6f35276cf3608595df59a3cfa5fb06a3309e64e387b0ea4f60875fdc4c696a0",
   classification: "API_PROVENANCE_ONLY" as const,
   decision: "SECURITY_REFUSED_UNVERIFIED_ROUTER" as const,
+  decisionEnforcement: "RECORDED_OPERATOR_DECISION" as const,
   approvalPolicy: "EXACT_BOUNDED" as const,
   walletWarning: "HIGH_RISK_UNVERIFIED_CONTRACT" as const,
   contractArchitecture: "ERC_2535_DIAMOND" as const,
@@ -41,8 +44,11 @@ export const ROUTER_PROVENANCE_EVIDENCE = {
   facetsSourceVerified: false,
   publishedDeploymentRegistryFound: false,
   deploymentSpecificAuditFound: false,
+  approvalReviewRequested: true,
+  approvalCancelledByUser: true,
   approvalSigned: false,
   transactionBroadcast: false,
+  allowanceConfirmedOnchain: false,
   builds: [
     {
       route: "USDT → NVDAon",

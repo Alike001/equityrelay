@@ -32,8 +32,12 @@ describe("router provenance security decision", () => {
   });
 
   it("does not represent an approval, signature or broadcast as completed", () => {
+    expect(ROUTER_PROVENANCE_EVIDENCE.decisionEnforcement).toBe("RECORDED_OPERATOR_DECISION");
+    expect(ROUTER_PROVENANCE_EVIDENCE.approvalReviewRequested).toBe(true);
+    expect(ROUTER_PROVENANCE_EVIDENCE.approvalCancelledByUser).toBe(true);
     expect(ROUTER_PROVENANCE_EVIDENCE.approvalSigned).toBe(false);
     expect(ROUTER_PROVENANCE_EVIDENCE.transactionBroadcast).toBe(false);
+    expect(ROUTER_PROVENANCE_EVIDENCE.allowanceConfirmedOnchain).toBe(false);
     expect(ROUTER_PROVENANCE_EVIDENCE.bscSourceVerified).toBe(false);
     expect(ROUTER_PROVENANCE_EVIDENCE.facetsSourceVerified).toBe(false);
   });
