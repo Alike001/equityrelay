@@ -2,11 +2,11 @@
 
 ## Did EquityRelay execute the route?
 
-No. It reached the first exact approval review, investigated the returned spender, and refused before approval, signature, or broadcast.
+No. It reached the first exact approval review in Binance Wallet. The wallet warned about the unverified target and the user cancelled. No approval transaction was signed or broadcast and no allowance was confirmed. The spender investigation and recorded refusal followed afterward.
 
 ## Why is that a product result rather than an incomplete demo?
 
-The product promise includes refusal. An authenticated route response proves what the API returned; it does not independently prove who controls the deployed authorization target or what its upgradeable code can do. EquityRelay preserved that boundary.
+The product promise includes explicit refusal. An authenticated route response proves what the API returned; it does not independently prove who controls the deployed authorization target or what its upgradeable code can do. The operator preserved that boundary. The current provenance decision is documented, not automatically enforced by action delivery.
 
 ## What exactly did Binance return?
 
@@ -26,7 +26,11 @@ Binance Wallet warned that approving the unverified contract was high risk. Equi
 
 ## What does `API_PROVENANCE_ONLY` mean?
 
-It means a signed, authenticated Binance response consistently supplied the vendor and address, while independent published deployed-contract attribution remained unavailable.
+It means authenticated Binance responses consistently supplied the vendor and address, while independent published deployed-contract attribution remained unavailable.
+
+## Is the router provenance refusal runtime-enforced?
+
+No. `routerSecurityDecision()` currently belongs to the recorded proof/presentation model and is not called by the live server action-delivery gate. Production is disarmed, and the operator refused to proceed after cancellation and investigation.
 
 ## What would allow reconsideration?
 

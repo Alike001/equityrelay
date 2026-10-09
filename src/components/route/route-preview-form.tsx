@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import Decimal from "decimal.js";
 import type { Address, BrowserIntent, PreviewResult, RouteDecision } from "@/types/route";
@@ -23,27 +24,31 @@ function displayDecimal(value: string, places: number): string {
 function RouteEvidence({ decision }: { decision: RouteDecision }) {
   const { evidence } = decision;
   return <details className="evidence-disclosure">
-    <summary>Why this route? <span>View issuer, quote and destination evidence</span></summary>
-    <div className="evidence-grid">
-      <div><small>Current representation</small><strong>{evidence.source.symbol} · Ondo</strong><code>{evidence.source.address}</code><small>Share ratio {evidence.source.tokenToShareRatio}</small></div>
-      <div><small>Destination representation</small><strong>{evidence.target.symbol} · bStocks</strong><code>{evidence.target.address}</code><small>Share ratio {evidence.target.tokenToShareRatio}</small></div>
-      <div><small>Settlement rail</small><strong>USDT on BNB Chain</strong><code>{evidence.leg1.to}</code><small>Two sequential indicative quotes</small></div>
-      <div><small>Destination</small><strong>Venus · {evidence.destination.investable ? "Investable" : "Unavailable"}</strong><code>{evidence.destination.investmentId}</code><small>Observed {new Date(evidence.destination.observedAt).toLocaleString()}</small></div>
+    <summary>Why this route? <span>View the six-part decision</span></summary>
+    <div className="route-decision-story">
+      <div><span>01</span><small>USER DESTINATION</small><strong>Use {decision.displayName} exposure on Venus</strong></div>
+      <div><span>02</span><small>COMPATIBILITY</small><strong>{evidence.source.symbol} · Ondo → {evidence.target.symbol} · bStocks</strong></div>
+      <div><span>03</span><small>SETTLEMENT PATH</small><strong>{evidence.source.symbol} → USDT → {evidence.target.symbol} → Venus</strong></div>
+      <div><span>04</span><small>EXPOSURE POLICY</small><strong>{decision.retentionPercent}% retained · minimum {new Decimal(100).minus(new Decimal(decision.maxExposureLossBps).div(100)).toString()}% · {decision.state}</strong></div>
+      <div><span>05</span><small>AUTHORIZATION</small><strong>Separate provenance decision · not approved by a route PASS</strong></div>
+      <div><span>06</span><small>CURRENT RESULT</small><strong>Live preview only · production execution disarmed</strong></div>
     </div>
+    <div className="decision-labels"><span><small>POLICY DECISION</small><strong>{decision.state}</strong></span><span><small>VENUS VERIFIER</small><strong>{decision.executionVerifierStatus === "VALIDATED" ? "Validated historically" : "Not validated"}</strong></span><span><small>AUTHORIZATION DECISION</small><strong>Separate review required</strong></span></div>
     <p className="evidence-note">Quotes are read-only and may change. Quote identifiers, signing headers and credentials are not shown. {decision.expiresAt ? `Earliest reported expiry: ${new Date(decision.expiresAt).toLocaleString()}.` : "Binance did not provide a reliable quote expiry; treat this as a short-lived preview."}</p>
+    <Link className="evidence-explain-link" href="/why-this-route">Read the plain-language route explanation ↗</Link>
   </details>;
 }
 
 function Result({ result, onPreflight, preflightLoading }: { result: PreviewResult; onPreflight: () => void; preflightLoading: boolean }) {
   if (result.kind !== "decision") return <section className={`result-panel ${result.state === "UNAVAILABLE" ? "unavailable" : "blocked"}`} role="status" aria-live="polite">
     <div className="eyebrow">ROUTE PREVIEW</div><h2>{result.state}</h2><p>{result.message}</p>
-    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{result.state === "UNAVAILABLE" ? "Unavailable · live route" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>EXECUTION VERIFICATION</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Verified" : "Pending · preview only"}</strong></span></div>
+    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{result.state === "UNAVAILABLE" ? "Unavailable · live route" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>VENUS VERIFIER</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Validated · historical evidence" : "Not validated · preview only"}</strong></span></div>
     <span className="reason">{result.reasons.join(" · ")}</span>
   </section>;
   const pass = result.state === "PASS";
   return <section className={`result-panel ${pass ? "passed" : "blocked"}`} aria-live="polite">
     <div className="result-top"><div><div className="eyebrow">ROUTE READY · READ-ONLY PREVIEW</div><h2>{result.displayName} <span>→</span> Venus</h2></div><div className="verdict-stack"><strong className={`status-pill ${pass ? "pass" : "block"}`}>{result.state}</strong>{pass && <small>Inside your {displayDecimal(new Decimal(result.maxExposureLossBps).div(100).toString(), 2)}% limit</small>}</div></div>
-    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{pass ? "Route available" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>EXECUTION VERIFICATION</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Verified" : "Pending · preview only"}</strong></span></div>
+    <div className="capability-line"><span><small>ROUTE STATUS</small><strong>{pass ? "Route available" : "Route blocked"}</strong></span><span className={result.executionVerifierStatus === "VALIDATED" ? "verified" : "pending"}><small>VENUS VERIFIER</small><strong>{result.executionVerifierStatus === "VALIDATED" ? "Validated · historical evidence" : "Not validated · preview only"}</strong></span></div>
     <div className="route-line" aria-label="Compiled route"><span><small>Current</small>Ondo</span><i aria-hidden="true">→</i><span><small>Settlement</small>USDT</span><i aria-hidden="true">→</i><span><small>Compatible</small>bStocks</span><i aria-hidden="true">→</i><span><small>Destination</small>Venus</span></div>
     <div className="exposure-grid">
       <div><small>BEFORE · {result.underlying}-EQUIVALENT SHARES</small><strong>{displayDecimal(result.sourceShares, 8)}</strong></div>

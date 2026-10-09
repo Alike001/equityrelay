@@ -25,7 +25,7 @@ npm run build
 
 The signed Binance client and response adapters follow the successful 2026-09-29 [feasibility result](docs/context/FEASIBILITY_RESULT_2026-09-29.md) and the read-only harness source. The [feasibility evidence page](/proof/feasibility) labels historical quote observations and does not claim execution.
 
-The public [execution safety proof](/proof/execution-safety) records a later authorization refusal. Three authenticated Binance Web3 builds named LiquidMesh and returned `0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5` as target and spender. The allowance was exact, but the BSC deployment and detected ERC-2535 facets were unverified, Binance Wallet warned about the unverified contract, and no published deployment registry or matching audit was found. EquityRelay classified the evidence as `API_PROVENANCE_ONLY` and stopped in `SECURITY_REFUSED_UNVERIFIED_ROUTER` before approval, signature, or broadcast.
+The public [execution safety proof](/proof/execution-safety) records two distinct events. First, the guarded UI opened an exact USDT approval review in Binance Wallet; the wallet warned that the target was high risk and unverified, and the user cancelled. No approval transaction was signed or broadcast, and no allowance was confirmed onchain. A later investigation found that three authenticated Binance Web3 builds named LiquidMesh and returned `0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5` as target and spender, while the BSC diamond/facets lacked verified source or a published deployment-specific registry or audit. The team recorded `API_PROVENANCE_ONLY` and the operator decision `SECURITY_REFUSED_UNVERIFIED_ROUTER`. That decision is a presentation and security record; it is not currently called by the live action-delivery gate.
 
 ## Phase 3D execution preparation
 
@@ -53,4 +53,4 @@ Authenticated execution route creation remains server-authoritative for the conf
 
 See [DEVEX_LOG.md](DEVEX_LOG.md) for observed API findings. The product scope and later execution safeguards are in [docs/context/BUILD_SPEC.md](docs/context/BUILD_SPEC.md).
 
-Judge-facing walkthroughs are in the [submission demo script](docs/SUBMISSION_DEMO.md) and [judge Q&A](docs/JUDGE_QA.md).
+Start with the public [judge demo](/demo), then use [system status](/status), the [submission demo script](docs/SUBMISSION_DEMO.md), and [judge Q&A](docs/JUDGE_QA.md).
