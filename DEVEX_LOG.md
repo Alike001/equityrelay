@@ -354,3 +354,14 @@ Append genuine findings as implementation proceeds. The entry below is pre-build
 - **Workaround:** Replace the production primary with NodeReal's documented BSC endpoint after it passed the complete probe locally and on five consecutive Vercel `sin1` requests. No fallback was configured because no second independent provider passed every required operation.
 - **Suggested improvement:** RPC providers should publish archive retention separately for blocks, transactions, receipts and logs, and return a stable pruned-history capability error.
 - **Evidence:** Read-only production and local probes on 2026-10-08; no transaction submitted.
+
+### 2026-10-08 10:23 WAT — Authenticated LiquidMesh builds returned an unverified upgradeable router
+
+- **API / surface:** Authenticated Binance Web3 Aggregator quote and swap-build endpoints; BSC contract `0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5`.
+- **Attempt:** Rebuild USDT → NVDAon, NVDAon → USDT and USDT → NVDAB and establish the provenance of the returned approval spender before requesting the first mainnet approval.
+- **Expected:** A published Binance or LiquidMesh deployment registry, verified deployed source, or deployment-specific audit that independently attributes the authorization target.
+- **Actual:** All three builds consistently identified `LiquidMesh` and used the same address as target and spender. The requested approvals were exact. Onchain inspection found a CREATE2-deployed ERC-2535 diamond with six facets and an active cut/ownership surface, but BscScan and Sourcify did not provide verified BSC source for the diamond or facets. No primary-source registry or matching audit naming the deployment was found. Binance Wallet classified the approval as high risk and unverified.
+- **Error/code:** Product decision `SECURITY_REFUSED_UNVERIFIED_ROUTER`; evidence classification `API_PROVENANCE_ONLY`.
+- **Workaround:** None. Keep execution disarmed and refuse live approval. Do not treat authenticated API output, cross-chain bytecode similarity, or transaction volume as proof of deployed-contract ownership or safety.
+- **Suggested improvement:** Binance or LiquidMesh should publish a chain-specific router registry, verified source for current diamond facets, upgrade authority, and audits tied to deployed bytecode hashes.
+- **Evidence:** Fresh authenticated build IDs `730ceb4f6a67417c8ec27c85e7e45188`, `fd29bb18ab1e401c9ecf16524a900c42`, and `51826ea755c94c5c89dcaa27771f9072`; read-only BSC RPC and explorer inspection; no approval, signature, or broadcast.

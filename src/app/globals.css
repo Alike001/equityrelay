@@ -211,3 +211,21 @@ a { color: inherit; }
 .proof-evidence-columns h2 { margin: 0 0 15px; font-size: 20px; letter-spacing: -.04em; }
 .proof-evidence-columns p { margin: 6px 0; color: #53695b; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) { .proof-evidence-columns { grid-template-columns: 1fr; } }
+
+.app-safety-note { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 14px; padding: 14px 17px; margin: 18px 0; border: 1px solid #d7dfd3; border-radius: 9px; background: #f3f6f0; color: #53675a; font-size: 12px; line-height: 1.45; }
+.app-safety-note strong { color: #244e38; }.app-safety-note a { margin-left: auto; color: #2e6848; font-weight: 750; text-decoration: none; }
+.refusal-summary { background: #643b35; }.refusal-summary small { color: #e6bdb3; }
+.provenance-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 25px; }
+.provenance-split article { padding: 24px; border: 1px solid #cfe0d0; border-radius: 10px; background: #f1f7ef; }
+.provenance-split article.refused { border-color: #e4c4bd; background: #fff4f0; }
+.provenance-split span { display: block; color: #597963; font-size: 9px; font-weight: 850; letter-spacing: .09em; }
+.provenance-split strong { display: block; margin: 30px 0 9px; font: 500 25px Georgia, serif; color: #20593d; }
+.provenance-split .refused strong { color: #8c4036; }.provenance-split p { margin: 0; font-size: 13px; }
+.safety-sequence { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 27px; }
+.safety-sequence>div { position: relative; min-height: 190px; padding: 16px; border: 1px solid #dce4d9; border-radius: 9px; background: #fff; }
+.safety-sequence>div:last-child { background: #fff1ed; border-color: #e1bbb2; }
+.safety-sequence span { color: #72907a; font-size: 10px; font-weight: 850; }.safety-sequence strong { display: block; margin: 34px 0 8px; font-size: 14px; }.safety-sequence p { margin: 0; font-size: 11px; line-height: 1.5; }
+.safety-sequence i { position: absolute; right: -10px; top: 17px; z-index: 1; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: #174f42; color: #fff; font-style: normal; font-size: 10px; }
+.refusal-decision { border-bottom: 0; }.refusal-decision>strong { display: inline-block; margin-top: 15px; padding: 10px 12px; border-radius: 5px; background: #f5dfda; color: #923d33; font-size: 11px; letter-spacing: .04em; }
+@media (max-width: 850px) { .safety-sequence { grid-template-columns: 1fr 1fr; }.safety-sequence i { display: none; } }
+@media (max-width: 600px) { .provenance-split, .safety-sequence { grid-template-columns: 1fr; }.app-safety-note { align-items: flex-start; flex-direction: column; }.app-safety-note a { margin-left: 0; }.router-build-table>div { grid-template-columns: 1fr; }.router-build-table>div:first-child { display: none; } }

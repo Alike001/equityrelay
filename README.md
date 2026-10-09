@@ -2,7 +2,7 @@
 
 **Own the stock. We handle the rail.**
 
-EquityRelay is a destination-driven router for supported tokenized equity assets on BNB Chain. Read-only previews currently support NVIDIA, SPCX and Tesla through the same `Ondo representation → USDT → bStock representation → Venus` primitive and user-defined exposure policy. Historical canonical BSC evidence validates the Venus supply and redemption verifier profiles for all three configured markets. Phase 2 builds and reviews unsigned transactions with exact bounded approvals. Phase 3 adds durable, authenticated execution preparation and canonical read-only verification. Mainnet execution remains blocked by the environment guard, the Phase 3A code lock and the connected-wallet send lock. Nothing is signed or broadcast.
+EquityRelay is a destination-driven router for supported tokenized equity assets on BNB Chain. Read-only previews currently support NVIDIA, SPCX and Tesla through the same `Ondo representation → USDT → bStock representation → Venus` primitive and user-defined exposure policy. Historical canonical BSC evidence validates the Venus supply and redemption verifier profiles for all three configured markets. Phase 2 builds and reviews unsigned transactions with exact bounded approvals. Phase 3 adds durable, authenticated execution preparation and canonical verification. Production remains disarmed through `EQUITYRELAY_MAINNET_EXECUTION=false`, and the deprecated backend relay remains permanently locked. No approval was signed and no transaction was broadcast.
 
 ## Run locally
 
@@ -25,6 +25,8 @@ npm run build
 
 The signed Binance client and response adapters follow the successful 2026-09-29 [feasibility result](docs/context/FEASIBILITY_RESULT_2026-09-29.md) and the read-only harness source. The [feasibility evidence page](/proof/feasibility) labels historical quote observations and does not claim execution.
 
+The public [execution safety proof](/proof/execution-safety) records a later authorization refusal. Three authenticated Binance Web3 builds named LiquidMesh and returned `0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5` as target and spender. The allowance was exact, but the BSC deployment and detected ERC-2535 facets were unverified, Binance Wallet warned about the unverified contract, and no published deployment registry or matching audit was found. EquityRelay classified the evidence as `API_PROVENANCE_ONLY` and stopped in `SECURITY_REFUSED_UNVERIFIED_ROUTER` before approval, signature, or broadcast.
+
 ## Phase 3D execution preparation
 
 The read-only production rehearsal is deployed at `https://equityrelay.vercel.app` on Vercel with an attached managed Neon PostgreSQL database. Binance-facing server functions are pinned to Vercel Singapore (`sin1`) because identical signed calls from the default US function region returned Binance business code `40304`; the Singapore deployment returned genuine live data without a fallback. The sanitized `/api/health/execution-readiness` check validates four migrations, chain 56, the configured finality policy, the false environment arm, and the active code lock.
@@ -44,9 +46,11 @@ The read-only production rehearsal is deployed at `https://equityrelay.vercel.ap
 - `src/lib/binance/` signs requests and validates live RWA, Trading, and DeFi Data responses server-side.
 - `src/app/api/route/preview/` accepts only human-readable user intent and returns a safe read-only result.
 - `src/app/api/route/preflight/` accepts the same intent, reacquires live evidence, and returns validated unsigned actions and simulation results. Leg 2 and Venus remain indicative until leg 1 settles and the route is quoted again.
-- `src/domain/authorization/` ABI-decodes approvals and constructs exact unsigned ERC-20 approvals. `src/domain/execution/` holds the staged product, test-setup, redemption, exit, and recovery state machines. `src/lib/execution/` holds server-only durable reviews, canonical reads and a submission adapter blocked by `PHASE3A_BROADCAST_DISABLED`. `/api/route/execute` always refuses while the code lock remains.
+- `src/domain/authorization/` ABI-decodes approvals and constructs exact unsigned ERC-20 approvals. `src/domain/execution/` holds the staged product, test-setup, redemption, exit, recovery state machines, and the separate router-provenance security decision. `src/lib/execution/` holds server-only durable reviews and canonical reads. Connected-wallet delivery is guarded by the server environment arm. `/api/route/execute` is a deprecated relay and always refuses through `PHASE3A_BROADCAST_DISABLED`.
 - `src/components/` and `src/app/` present the landing page, destination-first route flow, and feasibility record.
 
 Authenticated execution route creation remains server-authoritative for the configured allowlist. NVDA, SPCX and TSLA now have distinct Venus verification profiles backed by genuine historical supply and redemption receipts. Current live RWA and Venus identities must agree with the profile before preparation, and the global execution guards remain active for every asset.
 
 See [DEVEX_LOG.md](DEVEX_LOG.md) for observed API findings. The product scope and later execution safeguards are in [docs/context/BUILD_SPEC.md](docs/context/BUILD_SPEC.md).
+
+Judge-facing walkthroughs are in the [submission demo script](docs/SUBMISSION_DEMO.md) and [judge Q&A](docs/JUDGE_QA.md).
